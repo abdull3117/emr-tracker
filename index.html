@@ -391,6 +391,7 @@
 </script>
 <style>
   #lockScreen { position:fixed; inset:0; z-index:9999; background:var(--bg,#f7f7f4); display:flex; align-items:center; justify-content:center; padding:20px; }
+  #lockScreen[hidden] { display:none !important; }
   #lockScreen .lockCard { background:var(--surface,#fff); border:1px solid var(--border,#dfe1da); border-radius:14px; padding:32px 28px; max-width:360px; width:100%; box-shadow:0 1px 2px rgba(20,30,20,0.06), 0 4px 14px rgba(20,30,20,0.05); text-align:center; }
   #lockScreen h1 { font-size:1.2rem; margin:4px 0 2px; color:var(--ink,#16241c); }
   #lockScreen p.sub { font-size:0.85rem; color:var(--muted,#85897f); margin:0 0 20px; }
