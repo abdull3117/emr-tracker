@@ -440,12 +440,19 @@
       }, 0);
     }
 
-    var savedRole = null;
-    try { savedRole = localStorage.getItem(STORAGE_KEY); } catch (eStorage) { savedRole = null; }
-    if (savedRole === "admin" || savedRole === "team") {
-      showApp();
+    function initLockState() {
+        var savedRole = null;
+        try { savedRole = localStorage.getItem(STORAGE_KEY); } catch (eStorage) { savedRole = null; }
+        if (savedRole === "admin" || savedRole === "team") {
+              showApp();
+        } else {
+              showLock();
+        }
+    }
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initLockState);
     } else {
-      showLock();
+        initLockState();
     }
 
     document.getElementById("lockForm").addEventListener("submit", function (e) {
