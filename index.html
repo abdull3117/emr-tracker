@@ -149,6 +149,13 @@
   .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
   .status-pill.live .dot { background: var(--good); }
   .status-pill.live { color: var(--good); border-color: var(--good); }
+  .topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .live-clock { font-size: 0.78rem; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .logout-btn {
+    font-size: 0.78rem; font-weight: 600; padding: 5px 12px; border-radius: 999px;
+    border: 1px solid var(--border); background: #fff; color: var(--ink-2); cursor: pointer;
+  }
+  .logout-btn:hover { color: var(--bad); border-color: var(--bad); }
 
   .fy-bar {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -450,10 +457,36 @@
         showLock();
       }
     }
+    function wireTopbarExtras() {
+      var logoutBtn = document.getElementById("logoutBtn");
+      if (logoutBtn) {
+        logoutBtn.addEventListener("click", function () {
+          try { localStorage.removeItem(STORAGE_KEY); } catch (eStorage3) {}
+          var pwdEl = document.getElementById("lockPassword");
+          if (pwdEl) pwdEl.value = "";
+          var errEl = document.getElementById("lockErr");
+          if (errEl) errEl.textContent = "";
+          showLock();
+        });
+      }
+      var clockEl = document.getElementById("liveClock");
+      if (clockEl) {
+        var tick = function () {
+          var now = new Date();
+          var datePart = now.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+          var timePart = now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          clockEl.textContent = datePart + " · " + timePart;
+        };
+        tick();
+        setInterval(tick, 1000);
+      }
+    }
+
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", initLockState);
+      document.addEventListener("DOMContentLoaded", function () { initLockState(); wireTopbarExtras(); });
     } else {
       initLockState();
+      wireTopbarExtras();
     }
 
     document.getElementById("lockForm").addEventListener("submit", function (e) {
@@ -499,7 +532,11 @@
         <div class="sub">Sales, purchases, sales-officer performance, and creditor/debtor reconciliation &mdash; shared and updated in real time</div>
       </div>
     </div>
-    <span class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">Connecting&hellip;</span></span>
+    <div class="topbar-right">
+      <span class="live-clock" id="liveClock"></span>
+      <span class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">Connecting&hellip;</span></span>
+      <button type="button" class="logout-btn" id="logoutBtn">Log out</button>
+    </div>
   </div>
 
   <div id="dbWarning" class="banner bad" style="display:none;">
