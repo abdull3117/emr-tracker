@@ -442,18 +442,18 @@
     }
 
     function initLockState() {
-        var savedRole = null;
-        try { savedRole = localStorage.getItem(STORAGE_KEY); } catch (eStorage) { savedRole = null; }
-        if (savedRole === "admin" || savedRole === "team") {
-              showApp();
-        } else {
-              showLock();
-        }
+      var savedRole = null;
+      try { savedRole = localStorage.getItem(STORAGE_KEY); } catch (eStorage) { savedRole = null; }
+      if (savedRole === "admin" || savedRole === "team") {
+        showApp();
+      } else {
+        showLock();
+      }
     }
     if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", initLockState);
+      document.addEventListener("DOMContentLoaded", initLockState);
     } else {
-        initLockState();
+      initLockState();
     }
 
     document.getElementById("lockForm").addEventListener("submit", function (e) {
@@ -995,6 +995,13 @@
         <div class="field"><button type="button" class="btn btn-ghost" id="officerCancelEdit" style="display:none;">Cancel edit</button></div>
       </form>
       <div id="officerRosterList"></div>
+    </div>
+
+    <div class="card">
+      <div class="settings-section-title"><h2 style="margin:0;">Backup &amp; export</h2><span class="tag slate">Data safety</span></div>
+      <p class="hint">Download every record in this tracker &mdash; sales, purchases, payments, receipts, production, officers, balances and more &mdash; as a single Excel workbook (one sheet per section). Keep a copy on your computer every so often so you always have an offline backup separate from Firebase.</p>
+      <button type="button" class="btn btn-primary" id="exportAllDataBtn">Export all data (Excel)</button>
+      <div id="exportAllDataStatus" style="margin-top:10px;"></div>
     </div>
   </section>
 
@@ -5631,6 +5638,89 @@
     var text = document.getElementById("statusText");
     if (live) { pill.classList.add("live"); text.textContent = "Live"; }
     else { pill.classList.remove("live"); text.textContent = "Offline"; }
+  }
+
+  // Every write-bearing tracker_ collection this app uses, with the sheet name
+  // each becomes in the "Export all data" backup workbook. Kept in sync with the
+  // Firestore security rules list (see Firebase console) — add new collections
+  // here whenever a new one is added there.
+  var EXPORT_COLLECTIONS = [
+    { key: "tracker_sales", sheet: "Sales" },
+    { key: "tracker_purchases", sheet: "Purchases" },
+    { key: "tracker_payments", sheet: "Payments" },
+    { key: "tracker_receipts", sheet: "Receipts" },
+    { key: "tracker_vendorOpeningBalances", sheet: "VendorOpeningBalances" },
+    { key: "tracker_dealerOpeningBalances", sheet: "DealerOpeningBalances" },
+    { key: "tracker_officers", sheet: "Officers" },
+    { key: "tracker_officerPay", sheet: "OfficerPay" },
+    { key: "tracker_auditRecords", sheet: "AuditRecords" },
+    { key: "tracker_production", sheet: "Production" },
+    { key: "tracker_dispatchSync", sheet: "DispatchSync" },
+    { key: "tracker_syncMeta", sheet: "SyncMeta" },
+    { key: "tracker_productAlias", sheet: "ProductAlias" }
+  ];
+
+  // Pulls every document out of every tracker_ collection fresh from Firestore
+  // (not the on-screen, FY-filtered or 1000-row-capped arrays used for display)
+  // and bundles them into one downloadable Excel workbook, one sheet per
+  // collection. Used by the Settings "Export all data" button.
+  function exportAllDataToExcel(statusEl, btn) {
+    if (!db) {
+      statusEl.innerHTML = '<div class="banner bad">Not connected to the database right now &mdash; try again once the page shows &ldquo;Live&rdquo;.</div>';
+      return;
+    }
+    btn.disabled = true;
+    statusEl.innerHTML = '<div class="banner">Reading all data&hellip;</div>';
+    var fetches = EXPORT_COLLECTIONS.map(function (c) {
+      return db.collection(c.key).get().then(function (snap) {
+        var rows = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        return { sheet: c.sheet, rows: rows };
+      }).catch(function (e) {
+        console.error("export fetch failed for " + c.key, e);
+        return { sheet: c.sheet, rows: [], error: true };
+      });
+    });
+    Promise.all(fetches).then(function (results) {
+      var wb = XLSX.utils.book_new();
+      results.forEach(function (r) {
+        // Flatten any nested objects/Firestore Timestamps so json_to_sheet never
+        // produces "[object Object]" cells.
+        var cleanRows = r.rows.map(function (row) {
+          var out = {};
+          Object.keys(row).forEach(function (k) {
+            var v = row[k];
+            if (v && typeof v === "object" && typeof v.toDate === "function") {
+              out[k] = v.toDate().toISOString();
+            } else if (v && typeof v === "object") {
+              out[k] = JSON.stringify(v);
+            } else {
+              out[k] = v;
+            }
+          });
+          return out;
+        });
+        var ws = cleanRows.length ? XLSX.utils.json_to_sheet(cleanRows) : XLSX.utils.aoa_to_sheet([["(no records)"]]);
+        XLSX.utils.book_append_sheet(wb, ws, r.sheet.slice(0, 31));
+      });
+      var stamp = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, "EMR-Tracker-Backup-" + stamp + ".xlsx");
+      var totalRows = results.reduce(function (sum, r) { return sum + r.rows.length; }, 0);
+      var failedSheets = results.filter(function (r) { return r.error; }).map(function (r) { return r.sheet; });
+      statusEl.innerHTML = '<div class="banner' + (failedSheets.length ? " bad" : "") + '">Downloaded backup with ' + totalRows + ' records across ' + results.length + ' sheets' +
+        (failedSheets.length ? (". Could not read: " + failedSheets.join(", ")) : "") + ".</div>";
+    }).catch(function (e) {
+      console.error("export failed", e);
+      statusEl.innerHTML = '<div class="banner bad">Export failed: ' + (e && e.message ? e.message : "unknown error") + "</div>";
+    }).finally(function () {
+      btn.disabled = false;
+    });
+  }
+
+  var exportAllDataBtnEl = document.getElementById("exportAllDataBtn");
+  if (exportAllDataBtnEl) {
+    exportAllDataBtnEl.addEventListener("click", function () {
+      exportAllDataToExcel(document.getElementById("exportAllDataStatus"), exportAllDataBtnEl);
+    });
   }
 
   async function init() {
