@@ -3075,9 +3075,9 @@
         "<td>" + esc(fmtDate(d.date)) + "</td>" +
         "<td>" + esc(d.officer) + "</td>" +
         "<td>" + esc(d.dealer) + '<div class="muted">' + subParts.join(" &middot; ") + "</div></td>" +
-        "<td>" + esc(d.company || "&ndash;") + "</td>" +
-        "<td>" + esc(d.area || "&ndash;") + "</td>" +
-        "<td>" + esc(d.product || "&ndash;") + "</td>" +
+        "<td>" + (d.company ? esc(d.company) : "&ndash;") + "</td>" +
+        "<td>" + (d.area ? esc(d.area) : "&ndash;") + "</td>" +
+        "<td>" + (d.product ? esc(d.product) : "&ndash;") + "</td>" +
         '<td class="num">' + (d.quantity ? Number(d.quantity).toLocaleString("en-IN") + (d.unit ? " " + esc(d.unit) : "") : "&ndash;") + "</td>" +
         '<td class="num">' + inr(d.value) + "</td>" +
         '<td class="num">' + inr(d.collected) + "</td>" +
@@ -3399,7 +3399,7 @@
       html += "<tr>" +
         "<td>" + esc(fmtDate(d.date)) + "</td>" +
         "<td>" + esc(d.supplier) + '<div class="muted">' + subParts.join(" &middot; ") + "</div></td>" +
-        "<td>" + esc(d.mode || "&ndash;") + "</td>" +
+        "<td>" + (d.mode ? esc(d.mode) : "&ndash;") + "</td>" +
         '<td class="num" style="font-weight:700;">' + inr(d.amount) + "</td>" +
         '<td style="white-space:nowrap;"><button class="btn-ghost" style="padding:4px 8px;font-size:.76rem;" data-edit-payment="' + esc(d.id) + '">Edit</button> <button class="btn-danger-ghost" data-del-payment="' + esc(d.id) + '">Delete</button></td>' +
         "</tr>";
@@ -3512,9 +3512,9 @@
       if (d.notes) subParts.push(esc(d.notes));
       html += "<tr>" +
         "<td>" + esc(fmtDate(d.date)) + "</td>" +
-        "<td>" + esc(d.officer || "&ndash;") + "</td>" +
+        "<td>" + (d.officer ? esc(d.officer) : "&ndash;") + "</td>" +
         "<td>" + esc(d.dealer) + '<div class="muted">' + subParts.join(" &middot; ") + "</div></td>" +
-        "<td>" + esc(d.company || "&ndash;") + "</td>" +
+        "<td>" + (d.company ? esc(d.company) : "&ndash;") + "</td>" +
         '<td class="num" style="font-weight:700;">' + inr(d.amount) + "</td>" +
         '<td style="white-space:nowrap;"><button class="btn-ghost" style="padding:4px 8px;font-size:.76rem;" data-edit-receipt="' + esc(d.id) + '">Edit</button> <button class="btn-danger-ghost" data-del-receipt="' + esc(d.id) + '">Delete</button></td>' +
         "</tr>";
@@ -3748,7 +3748,7 @@
     var sorted = rows.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); });
     var html = '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Company</th><th class="num">Output (MT)</th><th class="num">Revenue (₹)</th><th class="num">Cost (₹)</th><th class="num">Profit (₹)</th><th></th></tr></thead><tbody>';
     sorted.slice(0, 300).forEach(function (d) {
-      html += "<tr><td>" + esc(fmtDate(d.date)) + "</td><td>" + esc(d.product) + '<div class="muted">' + esc(d.notes || "") + "</div></td><td>" + esc(d.company || "&ndash;") + "</td>" +
+      html += "<tr><td>" + esc(fmtDate(d.date)) + "</td><td>" + esc(d.product) + '<div class="muted">' + esc(d.notes || "") + "</div></td><td>" + (d.company ? esc(d.company) : "&ndash;") + "</td>" +
         '<td class="num">' + (d.outputMT ? Number(d.outputMT).toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "&ndash;") + "</td>" +
         '<td class="num">' + inr(d.revenue) + "</td>" +
         '<td class="num">' + inr(d.cost) + "</td>" +
@@ -4137,7 +4137,7 @@
       '<th>Date</th><th>Dealer</th><th>Area</th><th>Product</th><th class="num">Qty</th><th class="num">Value</th><th class="num">Collected</th>' +
       '</tr></thead><tbody>';
     rows.slice(0, 200).forEach(function (d) {
-      html += "<tr><td>" + esc(fmtDate(d.date)) + "</td><td>" + esc(d.dealer) + "</td><td>" + esc(d.area || "&ndash;") + "</td><td>" + esc(d.product || "&ndash;") + "</td>" +
+      html += "<tr><td>" + esc(fmtDate(d.date)) + "</td><td>" + esc(d.dealer) + "</td><td>" + (d.area ? esc(d.area) : "&ndash;") + "</td><td>" + (d.product ? esc(d.product) : "&ndash;") + "</td>" +
         '<td class="num">' + (d.quantity ? Number(d.quantity).toLocaleString("en-IN") : "&ndash;") + "</td>" +
         '<td class="num">' + inr(d.value) + "</td>" +
         '<td class="num">' + inr(d.collected) + "</td></tr>";
@@ -4209,7 +4209,7 @@
       html += "<tr" + (r.isMismatch ? ' style="background:var(--bad-soft);"' : "") + ">" +
         "<td>" + esc(r.party) + (r.notes ? '<div class="muted">' + esc(r.notes) + "</div>" : "") + "</td>" +
         '<td><span class="tag ' + (r.type === "creditor" ? "blue" : "") + '">' + (r.type === "creditor" ? "Creditor" : "Debtor") + "</span></td>" +
-        "<td>" + esc(r.officer || "&ndash;") + "</td>" +
+        "<td>" + (r.officer ? esc(r.officer) : "&ndash;") + "</td>" +
         '<td class="num">' + inr(r.accountsValue) + "</td>" +
         "<td>" + fileLink(r.accountsFileUrl, r.accountsFileName, r.accountsFileType) + "</td>" +
         '<td class="num">' + inr(r.verificationValue) + "</td>" +
