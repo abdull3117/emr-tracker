@@ -596,7 +596,8 @@
         <div class="field"><label for="sProduct">Product</label><input list="productList" id="sProduct" placeholder="e.g. Urea"></div>
         <div class="field"><label for="sQty">Quantity</label><input type="number" step="any" min="0" id="sQty" placeholder="0"></div>
         <div class="field"><label for="sUnit">Unit</label>
-          <select id="sUnit"><option value="">&ndash;</option><option>KGS</option><option>MTON</option><option>BAG</option><option>NOS</option><option>LTR</option></select>
+          <select id="sUnit"><option value="">&ndash;</option><option>KGS</option><option>MTON</option><option>BAG</option><option>NOS</option><option>LTR</option><option value="__new__">+ Other&hellip;</option></select>
+          <input id="sUnitNew" placeholder="Unit" style="display:none;margin-top:6px;">
         </div>
         <div class="field"><label for="sInvoiceNo">Invoice / Voucher No.</label><input id="sInvoiceNo" placeholder="e.g. Agro-1/26-27"></div>
         <div class="field"><label for="sValue">Sale Value (₹)</label><input type="number" step="any" min="0" id="sValue" required></div>
@@ -721,7 +722,8 @@
         <div class="field"><label for="pProduct">Product / Material</label><input list="productList" id="pProduct" required></div>
         <div class="field"><label for="pQty">Quantity</label><input type="number" step="any" min="0" id="pQty" placeholder="0"></div>
         <div class="field"><label for="pUnit">Unit</label>
-          <select id="pUnit"><option value="">&ndash;</option><option>KGS</option><option>MTON</option><option>BAG</option><option>NOS</option><option>LTR</option></select>
+          <select id="pUnit"><option value="">&ndash;</option><option>KGS</option><option>MTON</option><option>BAG</option><option>NOS</option><option>LTR</option><option value="__new__">+ Other&hellip;</option></select>
+          <input id="pUnitNew" placeholder="Unit" style="display:none;margin-top:6px;">
         </div>
         <div class="field"><label for="pValue">Purchase Value (₹)</label><input type="number" step="any" min="0" id="pValue" required></div>
         <div class="field" style="grid-column: 1 / -1;"><label for="pNotes">Notes</label><input id="pNotes" placeholder="optional"></div>
@@ -3108,7 +3110,7 @@
     document.getElementById("sArea").value = rec.area || "";
     document.getElementById("sProduct").value = rec.product || "";
     document.getElementById("sQty").value = rec.quantity || "";
-    document.getElementById("sUnit").value = rec.unit || "";
+    setSelectOrNew("sUnit", "sUnitNew", rec.unit || "");
     document.getElementById("sInvoiceNo").value = rec.invoiceNo || "";
     document.getElementById("sValue").value = rec.value || "";
     document.getElementById("sCollected").value = rec.collected || "";
@@ -3227,7 +3229,7 @@
     setSelectOrNew("pSupplier", "pSupplierNew", rec.supplier || "");
     document.getElementById("pProduct").value = rec.product || "";
     document.getElementById("pQty").value = rec.quantity || "";
-    document.getElementById("pUnit").value = rec.unit || "";
+    setSelectOrNew("pUnit", "pUnitNew", rec.unit || "");
     document.getElementById("pValue").value = rec.value || "";
     document.getElementById("pNotes").value = rec.notes || "";
     document.getElementById("purchaseFormTitle").textContent = "Editing: " + rec.supplier + " (" + fmtDate(rec.date) + ")";
@@ -5376,7 +5378,12 @@
   // ---------- db wiring ----------
   function deleteDoc(coll, id) {
     if (!db) return;
-    db.collection(coll).doc(id).delete().catch(function (e) {
+    // Call sites pass short names (e.g. "payments"), but every real
+    // Firestore collection is prefixed "tracker_" and the security rules
+    // only allow those exact paths — without this prefix every delete was
+    // being denied and silently falling into the catch below.
+    var fullColl = coll.indexOf("tracker_") === 0 ? coll : "tracker_" + coll;
+    db.collection(fullColl).doc(id).delete().catch(function (e) {
       console.error(e);
       appAlert("Could not delete that entry — please try again.");
     });
@@ -5487,7 +5494,10 @@
     if (u.indexOf("KG") >= 0) return "KGS";
     if (u.indexOf("LT") >= 0 || u.indexOf("LIT") >= 0) return "LTR";
     if (u.indexOf("NO") >= 0) return "NOS";
-    return "";
+    // Not one of the standard units — return it as-is (trimmed) rather than
+    // discarding it, so an unusual unit still lands in the "+ Other…" combo
+    // instead of silently vanishing.
+    return u;
   }
 
   function buildSalesExtractPrompt() {
@@ -5534,7 +5544,7 @@
     if (data.area) document.getElementById("sArea").value = String(data.area).trim();
     if (data.product) document.getElementById("sProduct").value = String(data.product).trim();
     if (data.quantity != null && data.quantity !== "") document.getElementById("sQty").value = Number(data.quantity) || "";
-    if (data.unit) document.getElementById("sUnit").value = normalizeUnit(data.unit);
+    if (data.unit) setSelectOrNew("sUnit", "sUnitNew", normalizeUnit(data.unit));
     if (data.invoiceNo) document.getElementById("sInvoiceNo").value = String(data.invoiceNo).trim();
     if (data.value != null && data.value !== "") document.getElementById("sValue").value = Number(data.value) || "";
     if (data.collected != null && data.collected !== "") document.getElementById("sCollected").value = Number(data.collected) || "";
@@ -5546,7 +5556,7 @@
     if (data.supplier) setSelectOrNew("pSupplier", "pSupplierNew", String(data.supplier).trim());
     if (data.product) document.getElementById("pProduct").value = String(data.product).trim();
     if (data.quantity != null && data.quantity !== "") document.getElementById("pQty").value = Number(data.quantity) || "";
-    if (data.unit) document.getElementById("pUnit").value = normalizeUnit(data.unit);
+    if (data.unit) setSelectOrNew("pUnit", "pUnitNew", normalizeUnit(data.unit));
     if (data.value != null && data.value !== "") document.getElementById("pValue").value = Number(data.value) || "";
     if (data.notes) document.getElementById("pNotes").value = String(data.notes).trim();
   }
@@ -5937,7 +5947,7 @@
       area: document.getElementById("sArea").value.trim(),
       product: document.getElementById("sProduct").value.trim(),
       quantity: Number(document.getElementById("sQty").value) || 0,
-      unit: document.getElementById("sUnit").value,
+      unit: comboValue("sUnit", "sUnitNew"),
       invoiceNo: document.getElementById("sInvoiceNo").value.trim(),
       value: Number(document.getElementById("sValue").value) || 0,
       collected: Number(document.getElementById("sCollected").value) || 0,
@@ -5956,6 +5966,7 @@
       resetCombo("sOfficerNew");
       resetCombo("sDealerNew");
       resetCombo("sCompanyNew");
+      resetCombo("sUnitNew");
     }).catch(function (err) { console.error(err); appAlert("Could not save that entry — please try again."); })
       .finally(function () { btn.disabled = false; });
   });
@@ -5969,6 +5980,7 @@
     resetCombo("sOfficerNew");
     resetCombo("sDealerNew");
     resetCombo("sCompanyNew");
+    resetCombo("sUnitNew");
     this.style.display = "none";
   });
 
@@ -5984,7 +5996,7 @@
       supplier: supplier,
       product: document.getElementById("pProduct").value.trim(),
       quantity: Number(document.getElementById("pQty").value) || 0,
-      unit: document.getElementById("pUnit").value,
+      unit: comboValue("pUnit", "pUnitNew"),
       value: Number(document.getElementById("pValue").value) || 0,
       notes: document.getElementById("pNotes").value.trim(),
       updatedAt: new Date().toISOString()
@@ -5999,6 +6011,7 @@
       document.getElementById("purchaseSubmitBtn").textContent = "Add purchase";
       document.getElementById("purchaseCancelEdit").style.display = "none";
       resetCombo("pSupplierNew");
+      resetCombo("pUnitNew");
     }).catch(function (err) { console.error(err); appAlert("Could not save that entry — please try again."); })
       .finally(function () { btn.disabled = false; });
   });
@@ -6010,6 +6023,7 @@
     document.getElementById("purchaseFormTitle").textContent = "Add a purchase";
     document.getElementById("purchaseSubmitBtn").textContent = "Add purchase";
     resetCombo("pSupplierNew");
+    resetCombo("pUnitNew");
     this.style.display = "none";
   });
 
@@ -6047,6 +6061,8 @@
   wireCombo("rcCompany", "rcCompanyNew");
   wireCombo("pmSupplier", "pmSupplierNew");
   wireCombo("pmMode", "pmModeNew");
+  wireCombo("sUnit", "sUnitNew");
+  wireCombo("pUnit", "pUnitNew");
 
   refreshDatalists(); refreshDealerSelect(); refreshSupplierSelect(); refreshPartySelect(); refreshLedgerDealerSelect(); refreshLedgerOfficerSelect();
   renderSalesTable(); renderPurchaseTable(); renderPurchaseSupplierChart(); renderProjections(); renderDashboard(); renderOfficerRoster(); renderAudit();
