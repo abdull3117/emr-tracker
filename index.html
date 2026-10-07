@@ -725,7 +725,10 @@
           <select id="pUnit"><option value="">&ndash;</option><option>KGS</option><option>MTON</option><option>BAG</option><option>NOS</option><option>LTR</option><option value="__new__">+ Other&hellip;</option></select>
           <input id="pUnitNew" placeholder="Unit" style="display:none;margin-top:6px;">
         </div>
-        <div class="field"><label for="pValue">Purchase Value (₹)</label><input type="number" step="any" min="0" id="pValue" required></div>
+        <div class="field"><label for="pRate">Rate (₹ per unit)</label><input type="number" step="any" min="0" id="pRate" placeholder="optional"></div>
+        <div class="field"><label for="pValue">Purchase Value (₹)</label><input type="number" step="any" min="0" id="pValue" required>
+          <div class="hint" style="margin-top:4px;">Auto-filled as Quantity &times; Rate when both are entered &mdash; you can still edit it directly.</div>
+        </div>
         <div class="field" style="grid-column: 1 / -1;"><label for="pNotes">Notes</label><input id="pNotes" placeholder="optional"></div>
         <div class="field" style="display:flex;gap:8px;align-items:flex-end;">
           <button type="submit" class="btn btn-primary" id="purchaseSubmitBtn">Add purchase</button>
@@ -3202,10 +3205,11 @@
       wrap.innerHTML = '<div class="empty-state"><strong>No purchases match this filter</strong>Try a different supplier or search term.</div>';
       return;
     }
-    var html = '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Supplier</th><th>Product / Material</th><th class="num">Qty</th><th class="num">Value</th><th></th></tr></thead><tbody>';
+    var html = '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Supplier</th><th>Product / Material</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Value</th><th></th></tr></thead><tbody>';
     rows.forEach(function (d) {
       html += "<tr><td>" + esc(fmtDate(d.date)) + "</td><td>" + esc(d.supplier) + '<div class="muted">' + esc(d.notes || "") + "</div></td><td>" + esc(d.product) + "</td>" +
         '<td class="num">' + (d.quantity ? Number(d.quantity).toLocaleString("en-IN") + (d.unit ? " " + esc(d.unit) : "") : "&ndash;") + "</td>" +
+        '<td class="num">' + (d.rate ? inr(d.rate) : "&ndash;") + "</td>" +
         '<td class="num">' + inr(d.value) + "</td>" +
         '<td style="white-space:nowrap;"><button class="btn-ghost" style="padding:4px 8px;font-size:.76rem;" data-edit-purchase="' + esc(d.id) + '">Edit</button> <button class="btn-danger-ghost" data-del-purchase="' + esc(d.id) + '">Delete</button></td></tr>';
     });
@@ -3230,6 +3234,7 @@
     document.getElementById("pProduct").value = rec.product || "";
     document.getElementById("pQty").value = rec.quantity || "";
     setSelectOrNew("pUnit", "pUnitNew", rec.unit || "");
+    document.getElementById("pRate").value = rec.rate || "";
     document.getElementById("pValue").value = rec.value || "";
     document.getElementById("pNotes").value = rec.notes || "";
     document.getElementById("purchaseFormTitle").textContent = "Editing: " + rec.supplier + " (" + fmtDate(rec.date) + ")";
@@ -5557,6 +5562,7 @@
     if (data.product) document.getElementById("pProduct").value = String(data.product).trim();
     if (data.quantity != null && data.quantity !== "") document.getElementById("pQty").value = Number(data.quantity) || "";
     if (data.unit) setSelectOrNew("pUnit", "pUnitNew", normalizeUnit(data.unit));
+    if (data.rate != null && data.rate !== "") document.getElementById("pRate").value = Number(data.rate) || "";
     if (data.value != null && data.value !== "") document.getElementById("pValue").value = Number(data.value) || "";
     if (data.notes) document.getElementById("pNotes").value = String(data.notes).trim();
   }
@@ -5997,6 +6003,7 @@
       product: document.getElementById("pProduct").value.trim(),
       quantity: Number(document.getElementById("pQty").value) || 0,
       unit: comboValue("pUnit", "pUnitNew"),
+      rate: Number(document.getElementById("pRate").value) || 0,
       value: Number(document.getElementById("pValue").value) || 0,
       notes: document.getElementById("pNotes").value.trim(),
       updatedAt: new Date().toISOString()
@@ -6063,6 +6070,26 @@
   wireCombo("pmMode", "pmModeNew");
   wireCombo("sUnit", "sUnitNew");
   wireCombo("pUnit", "pUnitNew");
+
+  // Purchase Value auto-fills as Quantity × Rate whenever both are present —
+  // the user can still edit the Value field directly afterward (e.g. to
+  // account for GST/freight); it's recomputed only when Qty or Rate changes.
+  (function wirePurchaseRateAutoCalc() {
+    var qtyEl = document.getElementById("pQty");
+    var rateEl = document.getElementById("pRate");
+    var valueEl = document.getElementById("pValue");
+    if (!qtyEl || !rateEl || !valueEl) return;
+    function recalc() {
+      var qty = parseFloat(qtyEl.value);
+      var rate = parseFloat(rateEl.value);
+      if (!isNaN(qty) && qty > 0 && !isNaN(rate) && rate > 0) {
+        var val = qty * rate;
+        valueEl.value = Math.round(val * 100) / 100;
+      }
+    }
+    qtyEl.addEventListener("input", recalc);
+    rateEl.addEventListener("input", recalc);
+  })();
 
   refreshDatalists(); refreshDealerSelect(); refreshSupplierSelect(); refreshPartySelect(); refreshLedgerDealerSelect(); refreshLedgerOfficerSelect();
   renderSalesTable(); renderPurchaseTable(); renderPurchaseSupplierChart(); renderProjections(); renderDashboard(); renderOfficerRoster(); renderAudit();
