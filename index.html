@@ -1311,7 +1311,12 @@
   function excelCellToString(c) {
     if (c == null) return "";
     if (c instanceof Date) {
-      return c.getFullYear() + "-" + String(c.getMonth() + 1).padStart(2, "0") + "-" + String(c.getDate()).padStart(2, "0");
+      // SheetJS 0.18.5 builds Excel dates a few seconds early in Indian
+      // time (01-04-2026 00:00 arrives as 31-03-2026 23:59:50), which made
+      // every imported date one day behind. Nudge forward 30 minutes before
+      // reading the calendar day so a midnight date lands on the right day.
+      var fixed = new Date(c.getTime() + 30 * 60 * 1000);
+      return fixed.getFullYear() + "-" + String(fixed.getMonth() + 1).padStart(2, "0") + "-" + String(fixed.getDate()).padStart(2, "0");
     }
     return String(c);
   }
