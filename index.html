@@ -972,6 +972,7 @@
           <div class="field" style="grid-column: span 2;"><label for="cbParty">Paid to / received from</label><input id="cbParty" required placeholder="e.g. Diesel, Musab, Vasanth Cashew"></div>
           <div class="field"><label for="cbAmount">Amount (&#8377;)</label><input type="number" step="any" min="0" id="cbAmount" required></div>
           <div class="field cb-exp-only"><label for="cbCategory">Expense category</label><select id="cbCategory"></select></div>
+          <div class="field cb-off-only"><label for="cbOfficer">Sales officer</label><select id="cbOfficer"></select></div>
           <div class="field cb-sal-only"><label for="cbSalFactory">For factory</label><select id="cbSalFactory"><option>Orathur</option><option>Vikravandi</option></select></div>
           <div class="field cb-sal-only"><label for="cbSalMonth">Salary month</label><input type="month" id="cbSalMonth"></div>
           <div class="field" style="grid-column: 1 / -1;"><label for="cbNotes">Notes</label><input id="cbNotes" placeholder="optional"></div>
@@ -996,6 +997,12 @@
       <h2>Salary statement</h2>
       <p class="hint">Salary due comes from the salary sheets in the Expenses tab. Cash paid and advances come from both cash books. <strong>Balance</strong> is what is still payable; a minus means more was paid or advanced than the sheet entered so far.</p>
       <div id="cbSalary"></div>
+    </div>
+
+    <div class="card">
+      <h2>Sales officer cash</h2>
+      <p class="hint">Cash collected from dealers and handed in to the cash books by each officer, against the dealer-wise receipts entered for that officer. <strong>Not yet credited</strong> means the money is in the cash book but those dealers&rsquo; outstanding hasn&rsquo;t been reduced yet &mdash; send the dealer-wise split and it gets entered in Receipts.</p>
+      <div id="cbOfficers"></div>
     </div>
 
     <div class="card">
@@ -4886,7 +4893,7 @@
   var cashDocs = [], cashLoaded = false;
   var CASH_TYPES = {
     out: [["expense", "Expense"], ["salary_payment", "Salary payment"], ["salary_advance", "Salary advance"], ["supplier_payment", "Supplier payment"], ["finance", "Finance / chit / loan"], ["transfer_out", "Transfer to other book"], ["other_out", "Other payment"]],
-    "in": [["bank_withdrawal", "Bank → cash"], ["receipt", "Receipt from dealer / party"], ["transfer_in", "Transfer from other book"], ["other_in", "Other receipt"]]
+    "in": [["officer_collection", "Cash from sales officer"], ["bank_withdrawal", "Bank → cash"], ["receipt", "Receipt from dealer / party"], ["transfer_in", "Transfer from other book"], ["other_in", "Other receipt"]]
   };
   function cashTypeLabel(t) { var all = CASH_TYPES.out.concat(CASH_TYPES["in"]); for (var i = 0; i < all.length; i++) if (all[i][0] === t) return all[i][1]; return t; }
   function cbLines(book, date) { return cashDocs.filter(function (d) { return d.kind === "line" && d.book === book && (!date || d.date === date); }); }
@@ -4935,6 +4942,11 @@
       return Math.round(mine) === Math.round(theirs) ? '<span class="cb-ok">✓ Matches ' + esc(other) + ' book</span>' : '<span class="cb-bad">' + esc(other) + ' book shows ' + inr(theirs) + '</span>';
     }
     if (l.type === "bank_withdrawal") return '<span class="cb-tag">From bank</span>';
+    if (l.type === "officer_collection") {
+      var oc = cbOfficerCash()[l.officer || l.party];
+      if (!oc) return "";
+      return oc.gap <= 0.5 ? '<span class="cb-ok">\u2713 Dealer-wise receipts entered</span>' : '<span class="cb-warn">' + inr(oc.gap) + ' not yet credited to dealers</span>';
+    }
     return "";
   }
   function cbSelBook() { return document.getElementById("cbBook").value; }
@@ -4959,6 +4971,14 @@
     var t = sel.value;
     document.querySelectorAll("#cbForm .cb-exp-only").forEach(function (e) { e.style.display = t === "expense" ? "" : "none"; });
     document.querySelectorAll("#cbForm .cb-sal-only").forEach(function (e) { e.style.display = (t === "salary_payment" || t === "salary_advance") ? "" : "none"; });
+    document.querySelectorAll("#cbForm .cb-off-only").forEach(function (e) { e.style.display = t === "officer_collection" ? "" : "none"; });
+    var offSel = document.getElementById("cbOfficer");
+    if (offSel && !offSel.options.length) {
+      var names = {};
+      salesDocsRaw.forEach(function (d) { if (d.officer) names[d.officer] = true; });
+      receiptDocsNew.concat(receiptDocsOld).forEach(function (d) { if (d.officer) names[d.officer] = true; });
+      offSel.innerHTML = Object.keys(names).sort().map(function (n) { return '<option>' + esc(n) + '</option>'; }).join("");
+    }
   }
 
   function renderCashBook() {
@@ -5012,8 +5032,39 @@
     if (badT.length) checks.push('<span class="cb-bad">Transfer doesn’t match the other book</span>');
     document.getElementById("cbChecks").innerHTML = checks.length ? checks.map(function (c) { return '<div style="margin-bottom:4px;">' + c + '</div>'; }).join("") : '<span class="muted">Enter the closing balance from the book to check it.</span>';
 
-    renderCbDays(); renderCbSalary(); refreshCbTypes();
+    renderCbDays(); renderCbSalary(); renderCbOfficers(); refreshCbTypes();
     if (w) w.style.display = "none";
+  }
+
+  // Cash handed in by each sales officer (both cash books) vs the dealer
+  // receipts entered under that officer as cash collections. The gap is
+  // money collected that hasn't been credited to any dealer yet.
+  function cbOfficerCash() {
+    var R = {};
+    cashDocs.forEach(function (l) {
+      if (l.kind !== "line" || l.type !== "officer_collection") return;
+      var o = l.officer || l.party;
+      R[o] = R[o] || { handed: 0, credited: 0, last: "" };
+      R[o].handed += Number(l.amount) || 0;
+      if (l.date > R[o].last) R[o].last = l.date;
+    });
+    receiptDocsNew.concat(receiptDocsOld).forEach(function (r) {
+      if (!r.officer || !R[r.officer] || !/^cash/i.test(r.source || "")) return;
+      R[r.officer].credited += Number(r.amount) || 0;
+    });
+    Object.keys(R).forEach(function (o) { R[o].gap = R[o].handed - R[o].credited; });
+    return R;
+  }
+  function renderCbOfficers() {
+    var wrap = document.getElementById("cbOfficers"); if (!wrap) return;
+    var R = cbOfficerCash(), names = Object.keys(R).sort();
+    if (!names.length) { wrap.innerHTML = '<div class="empty-state">No cash handed in by sales officers yet.</div>'; return; }
+    var html = '<div class="table-wrap"><table><thead><tr><th>Sales officer</th><th class="num">Cash handed in</th><th class="num">Credited to dealers</th><th class="num">Not yet credited</th><th>Last handed in</th></tr></thead><tbody>';
+    names.forEach(function (o) {
+      var r = R[o];
+      html += '<tr><td>' + esc(o) + '</td><td class="num">' + inr(r.handed) + '</td><td class="num">' + (r.credited ? inr(r.credited) : "&ndash;") + '</td><td class="num" style="font-weight:700;"><span class="' + (Math.abs(r.gap) < 1 ? "cb-ok" : "cb-warn") + '">' + (Math.abs(r.gap) < 1 ? "\u2713" : inr(r.gap)) + '</span></td><td>' + esc(fmtDate(r.last)) + '</td></tr>';
+    });
+    wrap.innerHTML = html + '</tbody></table></div>';
   }
 
   function renderCbDays() {
@@ -5074,6 +5125,7 @@
   }
 
   document.getElementById("cbDir").addEventListener("change", refreshCbTypes);
+  document.getElementById("cbOfficer").addEventListener("change", function () { document.getElementById("cbParty").value = this.value; });
   document.getElementById("cbType").addEventListener("change", refreshCbTypes);
   document.getElementById("cbBook").addEventListener("change", function () { document.getElementById("cbDate").value = ""; document.getElementById("cbSalFactory").value = cbSelBook(); renderCashBook(); });
   document.getElementById("cbDate").addEventListener("change", renderCashBook);
@@ -5088,6 +5140,7 @@
     if (!party || amount <= 0) return;
     var now = new Date().toISOString();
     var line = { kind: "line", book: book, date: date, dir: dir, type: type, party: party, amount: amount, notes: notes, seq: now, createdAt: now };
+    if (type === "officer_collection") line.officer = document.getElementById("cbOfficer").value || party;
     if (type === "salary_payment" || type === "salary_advance") {
       line.forFactory = document.getElementById("cbSalFactory").value;
       line.salaryMonth = document.getElementById("cbSalMonth").value || date.slice(0, 7);
