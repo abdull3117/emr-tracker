@@ -1,6 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-view="compact">
 <head>
+<script>try { var v = localStorage.getItem("emrTrackerView"); if (v === "normal" || v === "compact") document.documentElement.setAttribute("data-view", v); } catch (e) {}</script>
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>EMR Tracker</title>
@@ -397,6 +399,26 @@
   .settings-section-title .tag.slate { background: var(--slate-soft); color: var(--slate); }
   .officer-roster-table th, .officer-roster-table td { vertical-align: middle; }
   .officer-roster-table td.actions-cell { text-align: right; white-space: nowrap; }
+
+  /* View size — Compact (default) / Normal. Text is rem-based, so the root size scales it all. */
+  html[data-view="compact"] { font-size: 14px; }
+  html[data-view="compact"] .app { padding: 12px 14px 40px; }
+  html[data-view="compact"] .card { padding: 13px 14px; margin-bottom: 12px; border-radius: 10px; }
+  html[data-view="compact"] .card .hint { margin-bottom: 10px; }
+  html[data-view="compact"] .kpi-row { gap: 8px; margin-bottom: 12px; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); }
+  html[data-view="compact"] .kpi { padding: 9px 12px; border-radius: 10px; }
+  html[data-view="compact"] .kpi .label { margin-bottom: 3px; }
+  html[data-view="compact"] .kpi .value { font-size: 1.2rem; }
+  html[data-view="compact"] thead th { padding: 7px 8px; }
+  html[data-view="compact"] tbody td { padding: 5px 8px; }
+  html[data-view="compact"] nav.tabs { margin: 12px 0 14px; }
+  html[data-view="compact"] nav.tabs button { padding: 8px 11px; }
+  html[data-view="compact"] .fy-bar { margin-top: 10px; padding: 7px 12px; }
+  html[data-view="compact"] .dash-grid { gap: 12px; }
+  html[data-view="compact"] .btn { padding: 7px 13px; }
+  html[data-view="compact"] form.entry-form input, html[data-view="compact"] form.entry-form select { padding: 6px 8px; }
+  .view-toggle { font-size: 0.78rem; font-weight: 600; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--ink-2); cursor: pointer; }
+  .view-toggle:hover { color: var(--brand); border-color: var(--brand); }
 </style>
 </head>
 <body>
@@ -552,6 +574,7 @@
     <div class="topbar-right">
       <span class="live-clock" id="liveClock"></span>
       <span class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">Connecting&hellip;</span></span>
+      <button type="button" class="view-toggle" id="viewToggle" title="Switch between compact and normal size"></button>
       <button type="button" class="logout-btn" id="logoutBtn">Log out</button>
     </div>
   </div>
@@ -1345,6 +1368,19 @@
   var unsubSales = null, unsubPurchases = null;
 
   // ---------- tabs ----------
+  (function () {
+    var vt = document.getElementById("viewToggle");
+    function label() { vt.textContent = document.documentElement.getAttribute("data-view") === "compact" ? "Normal size" : "Compact size"; }
+    if (vt) {
+      label();
+      vt.addEventListener("click", function () {
+        var next = document.documentElement.getAttribute("data-view") === "compact" ? "normal" : "compact";
+        document.documentElement.setAttribute("data-view", next);
+        try { localStorage.setItem("emrTrackerView", next); } catch (e) {}
+        label();
+      });
+    }
+  })();
   document.querySelectorAll(".tab-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
       document.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
