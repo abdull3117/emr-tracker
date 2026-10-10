@@ -1567,6 +1567,29 @@
   // Turns one detected Tally voucher into a single sales-log row: its value
   // is always the voucher's own Debit total (never a per-line amount), so it
   // stays correct however many product lines or tax lines the voucher has.
+  // Fills a missing area: the dealer's most common area on past sales,
+  // else the sales officer's area from the Officers list, else blank.
+  function guessArea(dealer, officer) {
+    var dk = String(dealer || "").trim().toLowerCase();
+    if (dk) {
+      var counts = {}, best = "", bestN = 0;
+      (salesDocsRaw || []).forEach(function (d) {
+        var a = String(d.area || "").trim();
+        if (a && String(d.dealer || "").trim().toLowerCase() === dk) {
+          counts[a] = (counts[a] || 0) + 1;
+          if (counts[a] > bestN) { bestN = counts[a]; best = a; }
+        }
+      });
+      if (best) return best;
+    }
+    var ok = String(officer || "").trim().toLowerCase();
+    if (ok) {
+      var o = (officerDocs || []).filter(function (x) { return String(x.name || "").trim().toLowerCase() === ok && x.area; })[0];
+      if (o) return String(o.area).trim();
+    }
+    return "";
+  }
+
   function tallyVoucherToSalesDoc(v) {
     var lines = v.lines;
     var product = lines.map(function (l) { return l.product; }).join(", ");
@@ -1584,7 +1607,7 @@
       dealer: v.dealer,
       company: v.company,
       invoiceNo: v.invoiceNo,
-      area: "",
+      area: guessArea(v.dealer, v.officer),
       product: product,
       quantity: quantity,
       unit: consistentUnit,
@@ -2089,13 +2112,14 @@
           var dealer = pickField(obj, ["dealer", "customer", "partyname", "dealercustomer", "contactname"]);
           var value = numField(obj, ["value", "amount", "salevalue", "saleamount", "netamount"]);
           if (!date || !dealer || !value) { skipped++; return; }
+          var officer = pickField(obj, ["officer", "salesofficer", "so", "officername"]);
           docs.push({
             date: date,
-            officer: pickField(obj, ["officer", "salesofficer", "so", "officername"]),
+            officer: officer,
             dealer: dealer,
             company: pickField(obj, ["company", "companyname", "firm", "billingentity", "entity"]),
             invoiceNo: pickField(obj, ["invoiceno", "invoicenumber", "voucherno", "vchno", "billno", "billnumber"]),
-            area: pickField(obj, ["area", "territory", "areaterritory"]),
+            area: pickField(obj, ["area", "territory", "areaterritory"]) || guessArea(dealer, officer),
             product: pickField(obj, ["product", "item", "productmaterial"]),
             quantity: numField(obj, ["quantity", "qty"]),
             unit: pickField(obj, ["unit"]),
