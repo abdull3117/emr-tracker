@@ -191,6 +191,10 @@
   nav.tabs button[data-tab="audit"].active { color: var(--rose); border-bottom-color: var(--rose); }
   nav.tabs button[data-tab="expenses"].active { color: var(--rose); border-bottom-color: var(--rose); }
   nav.tabs button[data-tab="production"].active { color: var(--teal); border-bottom-color: var(--teal); }
+  nav.tabs button[data-tab="batchbook"].active { color: var(--teal); border-bottom-color: var(--teal); }
+  #panel-batchbook .dash-grid { grid-template-columns: 1fr; }
+  #panel-batchbook .dash-grid > .card { min-width: 0; }
+  .bb-frame { width: 100%; height: 900px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
   nav.tabs button[data-tab="ledger"].active { color: var(--brand); border-bottom-color: var(--brand); }
   nav.tabs button[data-tab="settings"].active { color: var(--slate); border-bottom-color: var(--slate); }
 
@@ -570,6 +574,7 @@
     <button class="tab-btn" data-tab="payments">Payments</button>
     <button class="tab-btn" data-tab="expenses">Expenses</button>
     <button class="tab-btn" data-tab="production">Production</button>
+    <button class="tab-btn" data-tab="batchbook">Production Expenses</button>
     <button class="tab-btn" data-tab="projections">Officer Performance</button>
     <button class="tab-btn" data-tab="audit">Balance Reconciliation</button>
     <button class="tab-btn" data-tab="ledger">Ledger</button>
@@ -969,6 +974,63 @@
     </div>
   </section>
 
+  <!-- BATCH BOOK — PRODUCTION EXPENSES -->
+  <section class="panel" id="panel-batchbook">
+    <div class="banner bad" id="bbDbWarning" style="display:none;margin-bottom:14px;">Couldn't read Batch Book data. Check the internet connection and reload the page.</div>
+    <div class="kpi-row" id="bbKpis"></div>
+
+    <div class="card">
+      <h2>Production cost by month</h2>
+      <p class="hint">Live from Batch Book &mdash; every batch logged there shows up here automatically. Costs are Batch Book's own costing: raw material at Settings rates, processing (EB, fuel, maintenance share) and labour. Follows the financial-year selector at the top.</p>
+      <div id="bbMonthlyWrap"></div>
+    </div>
+
+    <div class="card">
+      <h2>Batch Book costs vs actual books</h2>
+      <p class="hint">Checks Batch Book's standard costing against what was actually booked in this tracker for the same month: raw material vs Purchases, processing vs EB / maintenance / fuel expenses, labour vs Salaries &amp; Wages. A big gap means either the Batch Book rates need updating or a bill hasn't been entered yet.</p>
+      <div id="bbVsBooksWrap"></div>
+    </div>
+
+    <div class="dash-grid">
+      <div class="card">
+        <h2>Cost by product</h2>
+        <div id="bbByProductWrap"></div>
+      </div>
+      <div class="card">
+        <h2>Job work by company</h2>
+        <p class="hint">Revenue at the agreed &#8377;/MT rate against Batch Book's cost for those batches.</p>
+        <div id="bbByCompanyWrap"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Raw material consumed</h2>
+      <p class="hint">Quantities from the batch log, valued at Batch Book's current material rates.</p>
+      <div id="bbMaterialsWrap"></div>
+    </div>
+
+    <div class="card">
+      <h2>Batch log</h2>
+      <div class="filter-row">
+        <input type="search" id="bbSearch" placeholder="Search product, company, remarks&hellip;" style="min-width:220px;">
+        <select id="bbProductFilter"><option value="">All products</option></select>
+        <select id="bbMonthFilter"><option value="">All months</option></select>
+        <select id="bbTypeFilter"><option value="">Own + job work</option><option value="own">Own production only</option><option value="job">Job work only</option></select>
+      </div>
+      <div id="bbTableWrap"></div>
+    </div>
+
+    <div class="card">
+      <h2>Batch Book</h2>
+      <p class="hint">The full Batch Book app, so batches, stock and settings can be entered without leaving the tracker. Anything saved here appears in the reports above within a second or two.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <button type="button" class="btn btn-primary" id="bbOpenEmbed">Open Batch Book here</button>
+        <a class="btn btn-ghost" href="https://abdull3117.github.io/batch-book/" target="_blank" rel="noopener">Open in a new tab</a>
+      </div>
+      <div id="bbEmbedWrap"></div>
+    </div>
+  </section>
+
   <!-- PROJECTIONS -->
   <section class="panel" id="panel-projections">
     <div class="card" style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
@@ -1241,6 +1303,7 @@
   var EXPENSE_BRANCHES = ["Vikravandi", "Orathur"];
   var EXPENSE_CATEGORIES = ["Salaries & Wages", "Maintenance & Repairs", "EB Bills", "Fuel & Transport", "Rent", "Office & Admin", "Miscellaneous"];
   var productionDocsRaw = [];
+  var bbEntriesRaw = [], bbEntries = [], bbProducts = {}, bbMaterials = [], bbLoaded = false;
   var opDocsRaw = [];
   var dispatchSyncDocsRaw = [];
 
@@ -4508,10 +4571,182 @@
   }
   function isCreditNote(d) { return /credit note/i.test(d.mode || "") || /credit note/i.test(d.source || ""); }
 
+  // ---------- Production expenses (live from Batch Book's own collections) ----------
+  function bbMT(d) { return (Number(d.outputQty) || 0) / 1000; }
+  function bbProductName(d) { return bbProducts[d.productId] || d.productId || "Unspecified"; }
+  function bbIsJob(d) { return !!(d.jobworkCompanyId || d.jobworkCompanyName); }
+  function bbMtFmt(v) { return v ? v.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "&ndash;"; }
+  function bbSum(list) {
+    var t = { n: 0, mt: 0, rm: 0, proc: 0, lab: 0, tot: 0, jmt: 0, jrev: 0, jcost: 0 };
+    list.forEach(function (d) {
+      t.n++; t.mt += bbMT(d);
+      t.rm += Number(d.rmCost) || 0; t.proc += Number(d.processingCost) || 0; t.lab += Number(d.labourCost) || 0;
+      t.tot += Number(d.totalCost) || 0;
+      if (bbIsJob(d)) { t.jmt += bbMT(d); t.jrev += Number(d.jobworkRevenue) || 0; t.jcost += Number(d.totalCost) || 0; }
+    });
+    return t;
+  }
+  function bbPerMT(t) { return t.mt ? inr(t.tot / t.mt) : "&ndash;"; }
+
+  function renderBbKpis() {
+    var el = document.getElementById("bbKpis"); if (!el) return;
+    if (!bbLoaded) { el.innerHTML = '<div class="kpi"><div class="label">Batch Book</div><div class="value">Loading&hellip;</div></div>'; return; }
+    var t = bbSum(bbEntries);
+    el.innerHTML =
+      '<div class="kpi"><div class="label">Batches</div><div class="value">' + t.n + '</div></div>' +
+      '<div class="kpi"><div class="label">Output</div><div class="value">' + bbMtFmt(t.mt) + ' MT</div></div>' +
+      '<div class="kpi"><div class="label">Production cost</div><div class="value">' + inr(t.tot) + '</div><div class="officer-meta" style="margin-top:2px;">' + bbPerMT(t) + ' per MT</div></div>' +
+      '<div class="kpi"><div class="label">Raw material</div><div class="value">' + inr(t.rm) + '</div></div>' +
+      '<div class="kpi"><div class="label">Processing + labour</div><div class="value">' + inr(t.proc + t.lab) + '</div></div>' +
+      '<div class="kpi"><div class="label">Job-work revenue</div><div class="value">' + inr(t.jrev) + '</div><div class="officer-meta" style="margin-top:2px;">' + bbMtFmt(t.jmt) + ' MT for other companies</div></div>';
+  }
+
+  function bbMonths() {
+    var months = [];
+    bbEntries.forEach(function (d) { var m = String(d.date || "").slice(0, 7); if (/^\d{4}-\d{2}$/.test(m) && months.indexOf(m) < 0) months.push(m); });
+    return months.sort();
+  }
+
+  function renderBbMonthly() {
+    var wrap = document.getElementById("bbMonthlyWrap"); if (!wrap) return;
+    if (!bbEntries.length) { wrap.innerHTML = '<div class="empty-state">' + (bbLoaded ? "No batches logged in Batch Book for this period." : "Loading Batch Book&hellip;") + '</div>'; return; }
+    var months = bbMonths();
+    var html = '<div class="table-wrap"><table><thead><tr><th>Month</th><th class="num">Batches</th><th class="num">Output (MT)</th><th class="num">Raw material</th><th class="num">Processing</th><th class="num">Labour</th><th class="num">Total cost</th><th class="num">&#8377;/MT</th><th class="num">Job-work MT</th><th class="num">Job-work revenue</th></tr></thead><tbody>';
+    function row(label, t, bold) {
+      return '<tr' + (bold ? ' style="font-weight:700;border-top:2px solid var(--border);"' : '') + '><td>' + label + '</td><td class="num">' + t.n + '</td><td class="num">' + bbMtFmt(t.mt) + '</td><td class="num">' + inr(t.rm) + '</td><td class="num">' + inr(t.proc) + '</td><td class="num">' + inr(t.lab) + '</td><td class="num" style="font-weight:700;">' + inr(t.tot) + '</td><td class="num">' + bbPerMT(t) + '</td><td class="num">' + bbMtFmt(t.jmt) + '</td><td class="num">' + (t.jrev ? inr(t.jrev) : "&ndash;") + '</td></tr>';
+    }
+    months.forEach(function (m) { html += row(esc(monthLabel(m)), bbSum(bbEntries.filter(function (d) { return String(d.date || "").slice(0, 7) === m; }))); });
+    html += row("Total", bbSum(bbEntries), true);
+    wrap.innerHTML = html + '</tbody></table></div>';
+  }
+
+  function renderBbVsBooks() {
+    var wrap = document.getElementById("bbVsBooksWrap"); if (!wrap) return;
+    if (!bbEntries.length) { wrap.innerHTML = '<div class="empty-state">Nothing to compare yet.</div>'; return; }
+    var months = bbMonths(), M = {};
+    months.forEach(function (m) { M[m] = { rm: 0, proc: 0, lab: 0, purch: 0, plant: 0, wages: 0 }; });
+    bbEntries.forEach(function (d) { var r = M[String(d.date || "").slice(0, 7)]; if (!r) return; r.rm += Number(d.rmCost) || 0; r.proc += Number(d.processingCost) || 0; r.lab += Number(d.labourCost) || 0; });
+    purchaseDocs.forEach(function (d) { var r = M[String(d.date || "").slice(0, 7)]; if (r) r.purch += Number(d.value) || 0; });
+    expenseDocs.forEach(function (d) {
+      var r = M[String(d.date || "").slice(0, 7)]; if (!r) return;
+      var a = Number(d.amount) || 0, c = d.category || "";
+      if (c === "EB Bills" || c === "Maintenance & Repairs" || c === "Fuel & Transport") r.plant += a;
+      else if (c === "Salaries & Wages") r.wages += a;
+    });
+    function diff(a, b) { var v = b - a; return '<td class="num"><span class="' + (v > 0 ? "trend-down" : "trend-up") + '">' + (v ? inr(v) : "&ndash;") + '</span></td>'; }
+    var T = { rm: 0, proc: 0, lab: 0, purch: 0, plant: 0, wages: 0 };
+    var html = '<div class="table-wrap"><table><thead><tr><th rowspan="2">Month</th><th colspan="3" class="num">Raw material</th><th colspan="3" class="num">Processing</th><th colspan="3" class="num">Labour</th></tr>' +
+      '<tr><th class="num">Batch Book</th><th class="num">Purchases</th><th class="num">Gap</th><th class="num">Batch Book</th><th class="num">EB+maint+fuel</th><th class="num">Gap</th><th class="num">Batch Book</th><th class="num">Salaries &amp; wages</th><th class="num">Gap</th></tr></thead><tbody>';
+    function row(label, r, bold) {
+      return '<tr' + (bold ? ' style="font-weight:700;border-top:2px solid var(--border);"' : '') + '><td>' + label + '</td>' +
+        '<td class="num">' + inr(r.rm) + '</td><td class="num">' + inr(r.purch) + '</td>' + diff(r.rm, r.purch) +
+        '<td class="num">' + inr(r.proc) + '</td><td class="num">' + inr(r.plant) + '</td>' + diff(r.proc, r.plant) +
+        '<td class="num">' + inr(r.lab) + '</td><td class="num">' + inr(r.wages) + '</td>' + diff(r.lab, r.wages) + '</tr>';
+    }
+    months.forEach(function (m) { var r = M[m]; Object.keys(T).forEach(function (k) { T[k] += r[k]; }); html += row(esc(monthLabel(m)), r); });
+    html += row("Total", T, true);
+    html += '</tbody></table></div><p class="muted" style="font-size:.78rem;margin-top:8px;">Gap = books minus Batch Book. Red means more was booked than Batch Book costed. Purchases include trading items that aren\'t used in production, and Salaries &amp; wages include office staff, so some gap there is expected.</p>';
+    wrap.innerHTML = html;
+  }
+
+  function renderBbByProduct() {
+    var wrap = document.getElementById("bbByProductWrap"); if (!wrap) return;
+    if (!bbEntries.length) { wrap.innerHTML = '<div class="empty-state">No batches yet.</div>'; return; }
+    var g = {};
+    bbEntries.forEach(function (d) { var p = bbProductName(d); (g[p] = g[p] || []).push(d); });
+    var rows = Object.keys(g).map(function (p) { return { p: p, t: bbSum(g[p]) }; }).sort(function (a, b) { return b.t.tot - a.t.tot; });
+    var html = '<div class="table-wrap"><table><thead><tr><th>Product</th><th class="num">Batches</th><th class="num">MT</th><th class="num">Cost</th><th class="num">&#8377;/MT</th></tr></thead><tbody>';
+    rows.forEach(function (r) { html += '<tr><td>' + esc(r.p) + '</td><td class="num">' + r.t.n + '</td><td class="num">' + bbMtFmt(r.t.mt) + '</td><td class="num">' + inr(r.t.tot) + '</td><td class="num">' + bbPerMT(r.t) + '</td></tr>'; });
+    wrap.innerHTML = html + '</tbody></table></div>';
+  }
+
+  function renderBbByCompany() {
+    var wrap = document.getElementById("bbByCompanyWrap"); if (!wrap) return;
+    var jobs = bbEntries.filter(bbIsJob);
+    if (!jobs.length) { wrap.innerHTML = '<div class="empty-state">No job-work batches in this period.</div>'; return; }
+    var g = {};
+    jobs.forEach(function (d) { var c = d.jobworkCompanyName || d.jobworkCompanyId; (g[c] = g[c] || []).push(d); });
+    var tm = 0, tr = 0, tc = 0;
+    var html = '<div class="table-wrap"><table><thead><tr><th>Company</th><th class="num">MT</th><th class="num">Revenue</th><th class="num">Cost</th><th class="num">Profit</th></tr></thead><tbody>';
+    Object.keys(g).sort().forEach(function (c) {
+      var t = bbSum(g[c]), p = t.jrev - t.jcost; tm += t.jmt; tr += t.jrev; tc += t.jcost;
+      html += '<tr><td>' + esc(c) + '</td><td class="num">' + bbMtFmt(t.jmt) + '</td><td class="num">' + inr(t.jrev) + '</td><td class="num">' + inr(t.jcost) + '</td><td class="num"><span class="' + (p < 0 ? "trend-down" : "trend-up") + '">' + inr(p) + '</span></td></tr>';
+    });
+    html += '<tr style="font-weight:700;border-top:2px solid var(--border);"><td>Total</td><td class="num">' + bbMtFmt(tm) + '</td><td class="num">' + inr(tr) + '</td><td class="num">' + inr(tc) + '</td><td class="num"><span class="' + (tr - tc < 0 ? "trend-down" : "trend-up") + '">' + inr(tr - tc) + '</span></td></tr>';
+    wrap.innerHTML = html + '</tbody></table></div>';
+  }
+
+  function renderBbMaterials() {
+    var wrap = document.getElementById("bbMaterialsWrap"); if (!wrap) return;
+    if (!bbEntries.length) { wrap.innerHTML = '<div class="empty-state">No batches yet.</div>'; return; }
+    var q = {};
+    bbEntries.forEach(function (d) { var m = d.materials || {}; Object.keys(m).forEach(function (k) { q[k] = (q[k] || 0) + (Number(m[k]) || 0); }); });
+    var byId = {}; bbMaterials.forEach(function (m) { byId[m.id] = m; });
+    var rows = Object.keys(q).filter(function (k) { return q[k]; }).map(function (k) {
+      var m = byId[k] || { name: k, unit: "", rate: 0 };
+      return { name: m.name, unit: m.unit || "", qty: q[k], rate: Number(m.rate) || 0, val: q[k] * (Number(m.rate) || 0) };
+    }).sort(function (a, b) { return b.val - a.val; });
+    var tv = 0;
+    var html = '<div class="table-wrap"><table><thead><tr><th>Material</th><th class="num">Quantity</th><th class="num">Rate</th><th class="num">Value</th></tr></thead><tbody>';
+    rows.forEach(function (r) { tv += r.val; html += '<tr><td>' + esc(r.name) + '</td><td class="num">' + Math.round(r.qty).toLocaleString("en-IN") + ' ' + esc(r.unit) + '</td><td class="num">&#8377;' + r.rate.toLocaleString("en-IN", { maximumFractionDigits: 2 }) + '</td><td class="num">' + inr(r.val) + '</td></tr>'; });
+    html += '<tr style="font-weight:700;border-top:2px solid var(--border);"><td colspan="3">Total</td><td class="num">' + inr(tv) + '</td></tr>';
+    wrap.innerHTML = html + '</tbody></table></div>';
+  }
+
+  function refreshBbFilters() {
+    var ps = document.getElementById("bbProductFilter"), ms = document.getElementById("bbMonthFilter");
+    if (!ps || !ms) return;
+    var pv = ps.value, mv = ms.value;
+    var prods = distinctSorted(bbEntriesRaw.map(bbProductName));
+    ps.innerHTML = '<option value="">All products</option>' + prods.map(function (p) { return '<option>' + esc(p) + '</option>'; }).join("");
+    ms.innerHTML = '<option value="">All months</option>' + bbMonths().slice().reverse().map(function (m) { return '<option value="' + m + '">' + esc(monthLabel(m)) + '</option>'; }).join("");
+    if (prods.indexOf(pv) >= 0) ps.value = pv;
+    if (bbMonths().indexOf(mv) >= 0) ms.value = mv;
+  }
+
+  function renderBbTable() {
+    var wrap = document.getElementById("bbTableWrap"); if (!wrap) return;
+    var q = (document.getElementById("bbSearch").value || "").toLowerCase().trim();
+    var pf = document.getElementById("bbProductFilter").value, mf = document.getElementById("bbMonthFilter").value, tf = document.getElementById("bbTypeFilter").value;
+    var rows = bbEntries.filter(function (d) {
+      if (pf && bbProductName(d) !== pf) return false;
+      if (mf && String(d.date || "").slice(0, 7) !== mf) return false;
+      if (tf === "own" && bbIsJob(d)) return false;
+      if (tf === "job" && !bbIsJob(d)) return false;
+      if (q && (bbProductName(d) + " " + (d.jobworkCompanyName || "") + " " + (d.remarks || "")).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    }).sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+    if (!rows.length) { wrap.innerHTML = '<div class="empty-state">No batches match.</div>'; return; }
+    var t = bbSum(rows);
+    var html = '<p class="muted" style="font-size:.8rem;">' + rows.length + ' batches &middot; ' + bbMtFmt(t.mt) + ' MT &middot; ' + inr(t.tot) + ' (' + bbPerMT(t) + '/MT)' + (rows.length > 300 ? ' &middot; showing latest 300' : '') + '</p>';
+    html += '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Job work for</th><th class="num">MT</th><th class="num">Raw material</th><th class="num">Processing</th><th class="num">Labour</th><th class="num">Total</th><th class="num">&#8377;/Kg</th><th class="num">Job-work revenue</th></tr></thead><tbody>';
+    rows.slice(0, 300).forEach(function (d) {
+      html += '<tr><td style="white-space:nowrap;">' + esc(fmtDate ? fmtDate(d.date) : d.date) + '</td><td>' + esc(bbProductName(d)) + (d.remarks ? '<div class="muted">' + esc(d.remarks) + '</div>' : '') + '</td><td>' + esc(d.jobworkCompanyName || "") + '</td>' +
+        '<td class="num">' + bbMtFmt(bbMT(d)) + '</td><td class="num">' + inr(Number(d.rmCost) || 0) + '</td><td class="num">' + inr(Number(d.processingCost) || 0) + '</td><td class="num">' + inr(Number(d.labourCost) || 0) + '</td>' +
+        '<td class="num" style="font-weight:700;">' + inr(Number(d.totalCost) || 0) + '</td><td class="num">' + (Number(d.costPerKg) || 0).toFixed(2) + '</td><td class="num">' + (d.jobworkRevenue ? inr(d.jobworkRevenue) : "&ndash;") + '</td></tr>';
+    });
+    wrap.innerHTML = html + '</tbody></table></div>';
+  }
+
+  function renderBatchBookAll() {
+    refreshBbFilters();
+    renderBbKpis(); renderBbMonthly(); renderBbVsBooks(); renderBbByProduct(); renderBbByCompany(); renderBbMaterials(); renderBbTable();
+  }
+
+  ["bbSearch", "bbProductFilter", "bbMonthFilter", "bbTypeFilter"].forEach(function (id) {
+    var el = document.getElementById(id); if (el) el.addEventListener(id === "bbSearch" ? "input" : "change", renderBbTable);
+  });
+  document.getElementById("bbOpenEmbed").addEventListener("click", function () {
+    var w = document.getElementById("bbEmbedWrap");
+    if (w.firstChild) { w.innerHTML = ""; this.textContent = "Open Batch Book here"; return; }
+    w.innerHTML = '<iframe class="bb-frame" src="https://abdull3117.github.io/batch-book/" title="Batch Book"></iframe>';
+    this.textContent = "Close Batch Book";
+  });
+
   function renderOverallPerformance() {
     var wrap = document.getElementById("overallPerformanceWrap");
     if (!wrap) return;
-    var months = fyMonthsFor([[salesDocs, "date"], [purchaseDocs, "date"], [expenseDocs, "date"], [opDocs, "month"], [receiptDocs, "date"], [paymentDocs, "date"]]);
+    var months = fyMonthsFor([[salesDocs, "date"], [purchaseDocs, "date"], [expenseDocs, "date"], [opDocs, "month"], [receiptDocs, "date"], [paymentDocs, "date"], [bbEntries, "date"]]);
     if (!months.length) { wrap.innerHTML = '<div class="empty-state">Nothing recorded for this period yet.</div>'; return; }
     var cats = [];
     expenseDocs.forEach(function (d) { var c = d.category || "Miscellaneous"; if (cats.indexOf(c) < 0) cats.push(c); });
@@ -4520,7 +4755,11 @@
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
     });
     var M = {};
-    months.forEach(function (m) { M[m] = { sales: 0, cn: 0, purch: 0, op: 0, exp: {}, expTot: 0, recv: 0, paid: 0 }; });
+    months.forEach(function (m) { M[m] = { sales: 0, cn: 0, purch: 0, op: 0, exp: {}, expTot: 0, recv: 0, paid: 0, bbMT: 0, bbCost: 0, jwRev: 0 }; });
+    bbEntries.forEach(function (d) {
+      var r = M[String(d.date || "").slice(0, 7)]; if (!r) return;
+      r.bbMT += bbMT(d); r.bbCost += Number(d.totalCost) || 0; r.jwRev += Number(d.jobworkRevenue) || 0;
+    });
     function add(m, k, v) { if (M[m]) M[m][k] += v; }
     salesDocs.forEach(function (d) { add(String(d.date || "").slice(0, 7), "sales", Number(d.value) || 0); });
     purchaseDocs.forEach(function (d) { add(String(d.date || "").slice(0, 7), "purch", Number(d.value) || 0); });
@@ -4537,10 +4776,11 @@
     });
     paymentDocs.forEach(function (d) { if (!isAdjustmentEntry(d)) add(String(d.date || "").slice(0, 7), "paid", Number(d.amount) || 0); });
 
-    var T = { sales: 0, cn: 0, purch: 0, op: 0, exp: {}, expTot: 0, recv: 0, paid: 0 };
+    var T = { sales: 0, cn: 0, purch: 0, op: 0, exp: {}, expTot: 0, recv: 0, paid: 0, bbMT: 0, bbCost: 0, jwRev: 0 };
     months.forEach(function (m) {
       var r = M[m];
       T.sales += r.sales; T.cn += r.cn; T.purch += r.purch; T.op += r.op; T.expTot += r.expTot; T.recv += r.recv; T.paid += r.paid;
+      T.bbMT += r.bbMT; T.bbCost += r.bbCost; T.jwRev += r.jwRev;
       cats.forEach(function (c) { T.exp[c] = (T.exp[c] || 0) + (r.exp[c] || 0); });
     });
 
@@ -4566,6 +4806,7 @@
       '<div class="kpi"><div class="label">Gross margin</div><div class="value ' + (grossTotal >= 0 ? "good" : "bad") + '">' + inr(grossTotal) + '</div><div class="officer-meta" style="margin-top:2px;">sales &minus; purchases</div></div>' +
       '<div class="kpi"><div class="label">Salaries &amp; expenses</div><div class="value">' + inr(totalCost(T)) + '</div><div class="officer-meta" style="margin-top:2px;">officer pay + this tab</div></div>' +
       '<div class="kpi"><div class="label">Net profit</div><div class="value ' + (netTotal >= 0 ? "good" : "bad") + '">' + inr(netTotal) + '</div><div class="officer-meta" style="margin-top:2px;">' + margin.toFixed(1) + '% of sales</div></div>' +
+      (T.bbCost ? '<div class="kpi"><div class="label">Production cost</div><div class="value">' + inr(T.bbCost) + '</div><div class="officer-meta" style="margin-top:2px;">' + bbMtFmt(T.bbMT) + ' MT &middot; ' + (T.bbMT ? inr(T.bbCost / T.bbMT) : "&ndash;") + '/MT (Batch Book)</div></div>' : '') +
       '<div class="kpi"><div class="label">Net cash flow</div><div class="value ' + (T.recv - T.paid - T.op - T.expTot >= 0 ? "good" : "bad") + '">' + inr(T.recv - T.paid - T.op - T.expTot) + '</div><div class="officer-meta" style="margin-top:2px;">received &minus; paid &minus; costs</div></div>' +
       '</div>';
     html += '<div class="table-wrap"><table><thead><tr><th></th>' + months.map(function (m) { return '<th class="num">' + esc(monthLabel(m)) + '</th>'; }).join("") + '<th class="num">Total</th></tr></thead><tbody>';
@@ -4580,6 +4821,14 @@
     cats.forEach(function (c) { html += line(esc(c), function (r) { return (r.exp && r.exp[c]) || 0; }, { indent: true }); });
     html += line("Total salaries &amp; expenses", totalCost, { top: true });
     html += line("Net profit / (loss)", net, { bold: true, top: true, signed: true });
+    if (T.bbCost) {
+      html += '<tr><td colspan="' + (months.length + 2) + '" class="muted" style="padding-top:14px;font-size:.78rem;">Production view (from Batch Book &mdash; standard costing; shown alongside, not deducted again, because these costs are already inside purchases, EB and wages above)</td></tr>';
+      html += '<tr><td>Output (MT)</td>' + months.map(function (m) { return '<td class="num">' + bbMtFmt(M[m].bbMT) + '</td>'; }).join("") + '<td class="num" style="font-weight:700;">' + bbMtFmt(T.bbMT) + '</td></tr>';
+      html += line("Production cost", function (r) { return r.bbCost; });
+      html += '<tr><td style="padding-left:22px;">Cost per MT</td>' + months.map(function (m) { return '<td class="num">' + (M[m].bbMT ? inr(M[m].bbCost / M[m].bbMT) : '&ndash;') + '</td>'; }).join("") + '<td class="num" style="font-weight:700;">' + (T.bbMT ? inr(T.bbCost / T.bbMT) : '&ndash;') + '</td></tr>';
+      if (T.jwRev) html += line("Job-work revenue (at agreed &#8377;/MT)", function (r) { return r.jwRev; }, { indent: true });
+      html += line("Net sales &minus; production cost", function (r) { return r.sales - r.cn - r.bbCost; }, { bold: true, top: true, signed: true });
+    }
     html += '<tr><td colspan="' + (months.length + 2) + '" class="muted" style="padding-top:14px;font-size:.78rem;">Cash view (bank/cash movements &mdash; set-offs, credit notes and TDS excluded)</td></tr>';
     html += line("Received from dealers", function (r) { return r.recv; });
     html += line("Paid to suppliers", function (r) { return r.paid; });
@@ -4960,7 +5209,9 @@
     renderOfficerPayTable();
     renderDispatchRecon();
     renderReceiptsKpis(); renderReceiptsByOfficer(); renderReceiptTable();
+    bbEntries = filterByFY(bbEntriesRaw, "date");
     renderExpensesAll();
+    renderBatchBookAll();
     renderDashboard();
     renderDealerLedger();
     renderOfficerLedger();
@@ -7107,6 +7358,24 @@
       ebConnections = (snap.exists && snap.data().connections) || [];
       renderEbConnections();
     }, function (e) { console.error("ebConnections sub error", e); });
+
+    db.collection("entries").limit(5000).onSnapshot(function (snap) {
+      bbEntriesRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      bbLoaded = true;
+      var w = document.getElementById("bbDbWarning"); if (w) w.style.display = "none";
+      applyFYFilterAndRenderAll();
+    }, function (e) {
+      console.error("batch book entries sub error", e);
+      var w = document.getElementById("bbDbWarning"); if (w) w.style.display = "block";
+    });
+    db.doc("settings/products").onSnapshot(function (snap) {
+      bbProducts = {}; ((snap.exists && snap.data().items) || []).forEach(function (p) { bbProducts[p.id] = p.name; });
+      renderBatchBookAll();
+    }, function (e) { console.error("batch book products sub error", e); });
+    db.doc("settings/materials").onSnapshot(function (snap) {
+      bbMaterials = (snap.exists && snap.data().items) || [];
+      renderBbMaterials();
+    }, function (e) { console.error("batch book materials sub error", e); });
 
     db.collection("tracker_expenses").orderBy("date", "desc").limit(5000).onSnapshot(function (snap) {
       expenseDocsRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
