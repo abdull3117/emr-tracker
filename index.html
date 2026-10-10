@@ -195,6 +195,15 @@
   nav.tabs button[data-tab="production"].active { color: var(--teal); border-bottom-color: var(--teal); }
   nav.tabs button[data-tab="batchbook"].active { color: var(--teal); border-bottom-color: var(--teal); }
   nav.tabs button[data-tab="cashbook"].active { color: var(--indigo); border-bottom-color: var(--indigo); }
+  nav.tabs button[data-tab="attendance"].active { color: var(--teal); border-bottom-color: var(--teal); }
+  #panel-attendance .dash-grid > .card, #panel-cashbook .dash-grid > .card { min-width: 0; }
+  .att-btn { font-family: inherit; font-size: .78rem; font-weight: 700; min-width: 34px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-2); cursor: pointer; }
+  .att-btn.on-P { background: var(--good); border-color: var(--good); color: #fff; }
+  .att-btn.on-A { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .att-btn.on-H { background: var(--warn); border-color: var(--warn); color: #fff; }
+  .att-grid td, .att-grid th { padding: 3px 4px !important; text-align: center; font-size: .74rem; }
+  .att-grid td:first-child, .att-grid th:first-child { text-align: left; white-space: nowrap; }
+  .att-P { color: var(--good); font-weight: 700; } .att-A { color: var(--bad); font-weight: 700; } .att-H { color: var(--warn); font-weight: 700; }
   .cb-ok { color: var(--good); font-weight: 600; }
   .cb-bad { color: var(--bad); font-weight: 600; }
   .cb-warn { color: var(--warn); font-weight: 600; }
@@ -606,6 +615,7 @@
     <button class="tab-btn" data-tab="payments">Payments</button>
     <button class="tab-btn" data-tab="expenses">Expenses</button>
     <button class="tab-btn" data-tab="cashbook">Cash Book</button>
+    <button class="tab-btn" data-tab="attendance">Attendance</button>
     <button class="tab-btn" data-tab="production">Production</button>
     <button class="tab-btn" data-tab="batchbook">Production Expenses</button>
     <button class="tab-btn" data-tab="projections">Officer Performance</button>
@@ -1008,6 +1018,50 @@
     <div class="card">
       <h2>Day-by-day balance</h2>
       <div id="cbDays"></div>
+    </div>
+  </section>
+
+  <!-- ATTENDANCE -->
+  <section class="panel" id="panel-attendance">
+    <div class="card" style="padding:12px 16px;">
+      <div class="cb-controls">
+        <div class="field"><label for="atDate">Date</label><input type="date" id="atDate"></div>
+        <div class="field"><label for="atFactoryF">Staff at</label><select id="atFactoryF"><option value="">All staff</option><option>Orathur</option><option>Vikravandi</option></select></div>
+        <button type="button" class="btn btn-ghost" id="atPrev">&larr; Previous day</button>
+        <button type="button" class="btn btn-ghost" id="atNext">Next day &rarr;</button>
+        <button type="button" class="btn btn-ghost" id="atAllP">Mark all present</button>
+      </div>
+    </div>
+    <div class="dash-grid">
+      <div class="card">
+        <h2 id="atDayTitle">Staff attendance</h2>
+        <p class="hint">Tap <strong>P</strong> present, <strong>&frac12;</strong> half day, <strong>A</strong> absent. Saves straight away.</p>
+        <div id="atDayList"></div>
+      </div>
+      <div class="card">
+        <h2>Factory crew (from Batch Book)</h2>
+        <p class="hint">Operators and loadmen present each day, entered by the supervisors in Batch Book&rsquo;s Attendance tab.</p>
+        <div id="atCrew"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:end;gap:10px;flex-wrap:wrap;">
+        <div><h2>Monthly staff register</h2><p class="hint" style="margin:0;">Days present, loss of pay at basic &divide; <span id="atDivisorLbl">31</span> per day, and the check against the salary sheet entered in Expenses.</p></div>
+        <div class="cb-controls"><div class="field"><label for="atMonth">Month</label><input type="month" id="atMonth"></div></div>
+      </div>
+      <div id="atRegister" style="margin-top:10px;"></div>
+    </div>
+    <div class="card">
+      <h2>Staff list</h2>
+      <p class="hint">Started from the Sep&rsquo;26 salary sheet. Add new staff here or mark someone as left.</p>
+      <form class="entry-form" id="atStaffForm">
+        <div class="field"><label for="atSName">Name</label><input id="atSName" required></div>
+        <div class="field"><label for="atSRole">Role</label><input id="atSRole" placeholder="e.g. Supervisor, Watchman"></div>
+        <div class="field"><label for="atSFactory">Works at</label><select id="atSFactory"><option>Orathur</option><option>Vikravandi</option></select></div>
+        <div class="field"><label for="atSBasic">Monthly basic (&#8377;)</label><input type="number" min="0" step="any" id="atSBasic" required></div>
+        <div class="field"><button type="submit" class="btn btn-primary">Add staff</button></div>
+      </form>
+      <div id="atStaffList" style="margin-top:12px;"></div>
     </div>
   </section>
 
@@ -5179,6 +5233,143 @@
       .catch(function (err) { console.error(err); appAlert("Could not save: " + err.message); });
   });
 
+  // ---------- Staff attendance (roster + daily marks kept in tracker_syncMeta) ----------
+  var staffRoster = [], staffAtt = {}, staffAttMonthLoaded = {}, crewDocs = [], AT_DIVISOR = 31;
+  function atSelDate() { var el = document.getElementById("atDate"); if (!el.value) el.value = todayISO(); return el.value; }
+  function atMonthDocId(m) { return "staffAttendance_" + m; }
+  function atLoadMonth(m) {
+    if (staffAttMonthLoaded[m]) return;
+    staffAttMonthLoaded[m] = true;
+    db.doc("tracker_syncMeta/" + atMonthDocId(m)).onSnapshot(function (snap) {
+      staffAtt[m] = (snap.exists && snap.data().days) || {};
+      renderAttendanceTab();
+    }, function (e) { console.error("attendance sub error", e); });
+  }
+  function atMark(date, pid) { var m = date.slice(0, 7); return ((staffAtt[m] || {})[date] || {})[pid] || ""; }
+  function atSetMark(date, pid, val) {
+    var m = date.slice(0, 7), upd = {};
+    upd["days." + date + "." + pid] = val || firebase.firestore.FieldValue.delete();
+    var ref = db.doc("tracker_syncMeta/" + atMonthDocId(m));
+    ref.update(upd).catch(function () {
+      var body = { days: {} }; body.days[date] = {}; body.days[date][pid] = val;
+      return ref.set(body, { merge: true });
+    }).catch(function (e) { appAlert("Could not save attendance: " + e.message); });
+    staffAtt[m] = staffAtt[m] || {}; staffAtt[m][date] = staffAtt[m][date] || {};
+    if (val) staffAtt[m][date][pid] = val; else delete staffAtt[m][date][pid];
+    renderAttendanceTab();
+  }
+  function atActiveStaff() {
+    var f = document.getElementById("atFactoryF").value;
+    return staffRoster.filter(function (p) { return p.active !== false && (!f || p.factory === f); }).sort(function (a, b) { return (a.factory + a.name).localeCompare(b.factory + b.name); });
+  }
+  function renderAttendanceTab() {
+    if (!document.getElementById("atDayList")) return;
+    var date = atSelDate();
+    atLoadMonth(date.slice(0, 7));
+    var mEl = document.getElementById("atMonth"); if (!mEl.value) mEl.value = date.slice(0, 7);
+    atLoadMonth(mEl.value);
+    document.getElementById("atDivisorLbl").textContent = AT_DIVISOR;
+    var people = atActiveStaff();
+    document.getElementById("atDayTitle").textContent = "Staff attendance — " + fmtDate(date);
+    var cnt = { P: 0, H: 0, A: 0, "": 0 };
+    var html = '<div class="table-wrap"><table><thead><tr><th>Name</th><th>Works at</th><th>Mark</th></tr></thead><tbody>';
+    people.forEach(function (p) {
+      var v = atMark(date, p.id); cnt[v] = (cnt[v] || 0) + 1;
+      html += '<tr><td>' + esc(p.name) + (p.role ? '<div class="muted">' + esc(p.role) + '</div>' : '') + '</td><td>' + esc(p.factory) + '</td><td style="white-space:nowrap;">' +
+        [["P", "P"], ["H", "½"], ["A", "A"]].map(function (o) { return '<button type="button" class="att-btn' + (v === o[0] ? " on-" + o[0] : "") + '" data-at-p="' + esc(p.id) + '" data-at-v="' + o[0] + '">' + o[1] + '</button>'; }).join(" ") + '</td></tr>';
+    });
+    html += '</tbody></table></div><p class="muted" style="font-size:.8rem;margin-top:6px;">Present ' + cnt.P + ' · Half day ' + (cnt.H || 0) + ' · Absent ' + (cnt.A || 0) + ' · Not marked ' + (cnt[""] || 0) + '</p>';
+    var dl = document.getElementById("atDayList"); dl.innerHTML = people.length ? html : '<div class="empty-state">No staff yet.</div>';
+    dl.querySelectorAll("[data-at-p]").forEach(function (b) { b.addEventListener("click", function () { var cur = atMark(date, b.getAttribute("data-at-p")); var v = b.getAttribute("data-at-v"); atSetMark(date, b.getAttribute("data-at-p"), cur === v ? "" : v); }); });
+    renderAtCrew(); renderAtRegister(); renderAtStaffList();
+  }
+  function renderAtCrew() {
+    var wrap = document.getElementById("atCrew"); if (!wrap) return;
+    var m = (document.getElementById("atMonth").value || atSelDate().slice(0, 7));
+    var rows = crewDocs.filter(function (d) { return String(d.date || "").slice(0, 7) === m; });
+    if (!rows.length) { wrap.innerHTML = '<div class="empty-state">No crew attendance entered in Batch Book for ' + esc(monthLabel(m)) + ' yet.</div>'; return; }
+    var by = {};
+    rows.forEach(function (d) { var f = d.factory || "Orathur"; by[d.date] = by[d.date] || {}; by[d.date][f] = d; });
+    var tot = { Orathur: { o: 0, l: 0, n: 0 }, Vikravandi: { o: 0, l: 0, n: 0 } };
+    var html = '<div class="table-wrap" style="max-height:340px;overflow:auto;"><table><thead><tr><th>Date</th><th class="num">Orathur op.</th><th class="num">Orathur loadmen</th><th class="num">Vikravandi op.</th><th class="num">Vikravandi loadmen</th></tr></thead><tbody>';
+    Object.keys(by).sort().reverse().forEach(function (d) {
+      var o = by[d].Orathur, v = by[d].Vikravandi;
+      if (o) { tot.Orathur.o += +o.operators || 0; tot.Orathur.l += +o.loadmen || 0; tot.Orathur.n++; }
+      if (v) { tot.Vikravandi.o += +v.operators || 0; tot.Vikravandi.l += +v.loadmen || 0; tot.Vikravandi.n++; }
+      html += '<tr><td>' + esc(fmtDate(d)) + '</td><td class="num">' + (o ? o.operators : "&ndash;") + '</td><td class="num">' + (o ? o.loadmen : "&ndash;") + '</td><td class="num">' + (v ? v.operators : "&ndash;") + '</td><td class="num">' + (v ? v.loadmen : "&ndash;") + '</td></tr>';
+    });
+    html += '<tr style="font-weight:700;border-top:2px solid var(--border);"><td>Man-days</td><td class="num">' + tot.Orathur.o + '</td><td class="num">' + tot.Orathur.l + '</td><td class="num">' + tot.Vikravandi.o + '</td><td class="num">' + tot.Vikravandi.l + '</td></tr></tbody></table></div>';
+    wrap.innerHTML = html;
+  }
+  function atSheetFor(m, name) {
+    var mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m.slice(5, 7) - 1] + "'" + m.slice(2, 4);
+    var key = String(name || "").toLowerCase().replace(/[^a-z]/g, "");
+    var hit = expenseDocsRaw.find(function (d) { return d.category === "Salaries & Wages" && /^Staff salary/i.test(d.paidTo || "") && (d.paidTo || "").indexOf(mon) >= 0 && String(d.paidTo).split("—").pop().toLowerCase().replace(/[^a-z]/g, "").slice(-key.length) === key; });
+    return hit ? Number(hit.amount) || 0 : null;
+  }
+  function renderAtRegister() {
+    var wrap = document.getElementById("atRegister"); if (!wrap) return;
+    var m = document.getElementById("atMonth").value; if (!m) return;
+    var parts = m.split("-"), daysIn = new Date(+parts[0], +parts[1], 0).getDate();
+    var lastDay = m === todayISO().slice(0, 7) ? +todayISO().slice(8, 10) : daysIn;
+    var people = atActiveStaff();
+    var days = []; for (var d = 1; d <= daysIn; d++) days.push(m + "-" + String(d).padStart(2, "0"));
+    var html = '<div class="table-wrap"><table class="att-grid"><thead><tr><th>Name</th>' + days.map(function (d) { return '<th>' + (+d.slice(8)) + '</th>'; }).join("") + '<th>Present</th><th>LOP days</th><th class="num">Basic</th><th class="num">Earned</th><th class="num">Salary sheet</th><th class="num">Difference</th></tr></thead><tbody>';
+    var T = { earned: 0, sheet: 0 };
+    people.forEach(function (p) {
+      var pres = 0, marked = 0;
+      var cells = days.map(function (d, i) {
+        var v = atMark(d, p.id);
+        if (v) marked++;
+        if (v === "P") pres += 1; else if (v === "H") pres += 0.5;
+        return '<td class="att-' + (v || "x") + '">' + (v === "H" ? "½" : (v || (i + 1 <= lastDay ? "·" : ""))) + '</td>';
+      }).join("");
+      var lop = Math.max(0, lastDay - pres - (lastDay - marked)); // only marked absences count as loss of pay
+      var basic = Number(p.basic) || 0, perDay = basic / AT_DIVISOR;
+      var earned = Math.max(0, basic - lop * perDay);
+      var sheet = atSheetFor(m, p.name);
+      T.earned += earned; if (sheet != null) T.sheet += sheet;
+      var diff = sheet == null ? null : sheet - earned;
+      html += '<tr><td>' + esc(p.name) + '</td>' + cells + '<td><strong>' + pres + '</strong></td><td>' + lop + '</td><td class="num">' + inr(basic) + '</td><td class="num">' + inr(earned) + '</td><td class="num">' + (sheet == null ? '<span class="muted">&ndash;</span>' : inr(sheet)) + '</td><td class="num">' + (diff == null ? "" : '<span class="' + (Math.abs(diff) < 2 ? "cb-ok" : "cb-warn") + '">' + (Math.abs(diff) < 2 ? "✓" : inr(diff)) + '</span>') + '</td></tr>';
+    });
+    html += '<tr style="font-weight:700;border-top:2px solid var(--border);"><td colspan="' + (days.length + 4) + '">Total</td><td class="num">' + inr(T.earned) + '</td><td class="num">' + (T.sheet ? inr(T.sheet) : "&ndash;") + '</td><td></td></tr></tbody></table></div>' +
+      '<p class="muted" style="font-size:.78rem;margin-top:6px;">P present · ½ half day · A absent · dot = not marked (not counted as loss of pay). Earned = basic minus loss-of-pay days × basic ÷ ' + AT_DIVISOR + '. Advances are deducted separately in the salary sheet.</p>';
+    wrap.innerHTML = people.length ? html : '<div class="empty-state">No staff yet.</div>';
+  }
+  function renderAtStaffList() {
+    var wrap = document.getElementById("atStaffList"); if (!wrap) return;
+    var all = staffRoster.slice().sort(function (a, b) { return (a.factory + a.name).localeCompare(b.factory + b.name); });
+    var html = '<div class="table-wrap"><table><thead><tr><th>Name</th><th>Role</th><th>Works at</th><th class="num">Monthly basic</th><th>Status</th><th></th></tr></thead><tbody>';
+    all.forEach(function (p) {
+      html += '<tr><td>' + esc(p.name) + '</td><td>' + esc(p.role || "") + '</td><td>' + esc(p.factory) + '</td><td class="num">' + inr(p.basic) + '</td><td>' + (p.active === false ? '<span class="muted">Left</span>' : '<span class="cb-ok">Active</span>') + '</td><td><button class="btn-ghost" style="padding:3px 8px;font-size:.76rem;" data-at-toggle="' + esc(p.id) + '">' + (p.active === false ? "Re-activate" : "Mark as left") + '</button></td></tr>';
+    });
+    wrap.innerHTML = html + '</tbody></table></div>';
+    wrap.querySelectorAll("[data-at-toggle]").forEach(function (b) { b.addEventListener("click", function () {
+      var id = b.getAttribute("data-at-toggle");
+      var list = staffRoster.map(function (p) { return p.id === id ? Object.assign({}, p, { active: p.active === false }) : p; });
+      db.doc("tracker_syncMeta/staffRoster").set({ people: list, updatedAt: new Date().toISOString() }, { merge: true });
+    }); });
+  }
+  document.getElementById("atStaffForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var name = document.getElementById("atSName").value.trim(); if (!name) return;
+    var p = { id: "st_" + Date.now().toString(36), name: name, role: document.getElementById("atSRole").value.trim(), factory: document.getElementById("atSFactory").value, basic: Number(document.getElementById("atSBasic").value) || 0, active: true };
+    db.doc("tracker_syncMeta/staffRoster").set({ people: staffRoster.concat([p]), updatedAt: new Date().toISOString() }, { merge: true }).then(function () { document.getElementById("atStaffForm").reset(); });
+  });
+  document.getElementById("atDate").addEventListener("change", renderAttendanceTab);
+  document.getElementById("atMonth").addEventListener("change", renderAttendanceTab);
+  document.getElementById("atFactoryF").addEventListener("change", renderAttendanceTab);
+  function atShift(n) { var d = new Date(atSelDate() + "T00:00:00"); d.setDate(d.getDate() + n); var iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); document.getElementById("atDate").value = iso; renderAttendanceTab(); }
+  document.getElementById("atPrev").addEventListener("click", function () { atShift(-1); });
+  document.getElementById("atNext").addEventListener("click", function () { atShift(1); });
+  document.getElementById("atAllP").addEventListener("click", function () {
+    var date = atSelDate(), m = date.slice(0, 7), upd = {};
+    atActiveStaff().forEach(function (p) { if (!atMark(date, p.id)) upd["days." + date + "." + p.id] = "P"; });
+    if (!Object.keys(upd).length) return;
+    var ref = db.doc("tracker_syncMeta/" + atMonthDocId(m));
+    ref.update(upd).catch(function () { var body = { days: {} }; body.days[date] = {}; Object.keys(upd).forEach(function (k) { body.days[date][k.split(".").pop()] = "P"; }); return ref.set(body, { merge: true }); });
+  });
+
   function renderOverallPerformance() {
     var wrap = document.getElementById("overallPerformanceWrap");
     if (!wrap) return;
@@ -7815,6 +8006,16 @@
       bbMaterials = (snap.exists && snap.data().items) || [];
       renderBbMaterials();
     }, function (e) { console.error("batch book materials sub error", e); });
+
+    db.doc("tracker_syncMeta/staffRoster").onSnapshot(function (snap) {
+      staffRoster = (snap.exists && snap.data().people) || [];
+      if (snap.exists && snap.data().divisor) AT_DIVISOR = Number(snap.data().divisor) || 31;
+      renderAttendanceTab();
+    }, function (e) { console.error("staff roster sub error", e); });
+    db.collection("dayLabour").limit(3000).onSnapshot(function (snap) {
+      crewDocs = snap.docs.map(function (d) { var x = d.data(); if (!x.date) x.date = d.id.slice(0, 10); return x; });
+      renderAtCrew();
+    }, function (e) { console.error("crew attendance sub error", e); });
 
     db.collection("tracker_cashbook").limit(5000).onSnapshot(function (snap) {
       cashDocs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
