@@ -4892,7 +4892,7 @@
   // ---------- Cash Book (daily cash books: Orathur main + Vikravandi VKD) ----------
   var cashDocs = [], cashLoaded = false;
   var CASH_TYPES = {
-    out: [["expense", "Expense"], ["salary_payment", "Salary payment"], ["salary_advance", "Salary advance"], ["supplier_payment", "Supplier payment"], ["finance", "Finance / chit / loan"], ["transfer_out", "Transfer to other book"], ["other_out", "Other payment"]],
+    out: [["expense", "Expense"], ["salary_payment", "Salary payment"], ["salary_advance", "Salary advance"], ["supplier_payment", "Supplier payment"], ["dealer_refund", "Refund to dealer"], ["finance", "Finance / chit / loan"], ["transfer_out", "Transfer to other book"], ["other_out", "Other payment"]],
     "in": [["officer_collection", "Cash from sales officer"], ["bank_withdrawal", "Bank → cash"], ["receipt", "Receipt from dealer / party"], ["transfer_in", "Transfer from other book"], ["other_in", "Other receipt"]]
   };
   function cashTypeLabel(t) { var all = CASH_TYPES.out.concat(CASH_TYPES["in"]); for (var i = 0; i < all.length; i++) if (all[i][0] === t) return all[i][1]; return t; }
@@ -4942,6 +4942,10 @@
       return Math.round(mine) === Math.round(theirs) ? '<span class="cb-ok">✓ Matches ' + esc(other) + ' book</span>' : '<span class="cb-bad">' + esc(other) + ' book shows ' + inr(theirs) + '</span>';
     }
     if (l.type === "bank_withdrawal") return '<span class="cb-tag">From bank</span>';
+    if (l.type === "dealer_refund") {
+      var rr = l.receiptId && receiptDocsNew.concat(receiptDocsOld).find(function (r) { return r.id === l.receiptId; });
+      return rr ? '<span class="cb-ok">\u2713 In Receipts as a refund</span>' : '<span class="cb-bad">Not in Receipts</span>';
+    }
     if (l.type === "officer_collection") {
       var oc = cbOfficerCash()[l.officer || l.party];
       if (!oc) return "";
@@ -5115,11 +5119,13 @@
   function cbDeleteLine(id) {
     var l = cashDocs.find(function (d) { return d.id === id; }); if (!l) return;
     var linked = l.expenseId && expenseDocsRaw.find(function (e) { return e.id === l.expenseId; });
-    appConfirm("Delete this line" + (linked ? " and its matching entry in Expenses" : "") + "? This can't be undone.").then(function (ok) {
+    var linkedR = l.receiptId && receiptDocsNew.concat(receiptDocsOld).find(function (r) { return r.id === l.receiptId; });
+    appConfirm("Delete this line" + (linked ? " and its matching entry in Expenses" : "") + (linkedR ? " and its refund entry in Receipts" : "") + "? This can't be undone.").then(function (ok) {
       if (!ok) return;
       var b = db.batch();
       b.delete(db.collection("tracker_cashbook").doc(id));
       if (linked) b.delete(db.collection("tracker_expenses").doc(l.expenseId));
+      if (linkedR) b.delete(db.collection("tracker_receipts").doc(l.receiptId));
       b.commit().catch(function (e) { appAlert("Could not delete: " + e.message); });
     });
   }
@@ -5140,12 +5146,20 @@
     if (!party || amount <= 0) return;
     var now = new Date().toISOString();
     var line = { kind: "line", book: book, date: date, dir: dir, type: type, party: party, amount: amount, notes: notes, seq: now, createdAt: now };
+    var b = db.batch();
     if (type === "officer_collection") line.officer = document.getElementById("cbOfficer").value || party;
+    var refundRef = null;
+    if (type === "dealer_refund") {
+      refundRef = db.collection("tracker_receipts").doc();
+      line.receiptId = refundRef.id;
+      var dl = salesDocsRaw.find(function (d) { return d.dealer === party; });
+      b.set(refundRef, { date: date, dealer: party, officer: dl ? (dl.officer || "") : "", company: dl ? (dl.company || "") : "", amount: -amount, invoiceNo: "", source: "Refund in cash (" + book + " cash book)", notes: notes || "Refund to dealer paid from the cash book", createdAt: now });
+    }
     if (type === "salary_payment" || type === "salary_advance") {
       line.forFactory = document.getElementById("cbSalFactory").value;
       line.salaryMonth = document.getElementById("cbSalMonth").value || date.slice(0, 7);
     }
-    var b = db.batch(), ref = db.collection("tracker_cashbook").doc();
+    var ref = db.collection("tracker_cashbook").doc();
     if (type === "expense") {
       var exRef = db.collection("tracker_expenses").doc();
       line.expenseId = exRef.id;
