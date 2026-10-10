@@ -977,6 +977,11 @@
   <!-- BATCH BOOK — PRODUCTION EXPENSES -->
   <section class="panel" id="panel-batchbook">
     <div class="banner bad" id="bbDbWarning" style="display:none;margin-bottom:14px;">Couldn't read Batch Book data. Check the internet connection and reload the page.</div>
+    <div class="card" style="padding:12px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <label for="bbFactoryFilter" style="font-weight:600;">Factory</label>
+      <select id="bbFactoryFilter"><option value="">Both factories</option><option>Orathur</option><option>Vikravandi</option></select>
+      <span class="muted" id="bbUntaggedNote" style="font-size:.8rem;"></span>
+    </div>
     <div class="kpi-row" id="bbKpis"></div>
 
     <div class="card">
@@ -1303,7 +1308,7 @@
   var EXPENSE_BRANCHES = ["Vikravandi", "Orathur"];
   var EXPENSE_CATEGORIES = ["Salaries & Wages", "Maintenance & Repairs", "EB Bills", "Fuel & Transport", "Rent", "Office & Admin", "Miscellaneous"];
   var productionDocsRaw = [];
-  var bbEntriesRaw = [], bbEntries = [], bbProducts = {}, bbMaterials = [], bbLoaded = false;
+  var bbEntriesRaw = [], bbEntries = [], bbEntriesFY = [], bbProducts = {}, bbMaterials = [], bbLoaded = false;
   var opDocsRaw = [];
   var dispatchSyncDocsRaw = [];
 
@@ -4627,8 +4632,10 @@
     months.forEach(function (m) { M[m] = { rm: 0, proc: 0, lab: 0, purch: 0, plant: 0, wages: 0 }; });
     bbEntries.forEach(function (d) { var r = M[String(d.date || "").slice(0, 7)]; if (!r) return; r.rm += Number(d.rmCost) || 0; r.proc += Number(d.processingCost) || 0; r.lab += Number(d.labourCost) || 0; });
     purchaseDocs.forEach(function (d) { var r = M[String(d.date || "").slice(0, 7)]; if (r) r.purch += Number(d.value) || 0; });
+    var bbF = (document.getElementById("bbFactoryFilter") || {}).value || "";
     expenseDocs.forEach(function (d) {
       var r = M[String(d.date || "").slice(0, 7)]; if (!r) return;
+      if (bbF && d.branch && d.branch !== bbF) return;
       var a = Number(d.amount) || 0, c = d.category || "";
       if (c === "EB Bills" || c === "Maintenance & Repairs" || c === "Fuel & Transport") r.plant += a;
       else if (c === "Salaries & Wages") r.wages += a;
@@ -4719,9 +4726,9 @@
     if (!rows.length) { wrap.innerHTML = '<div class="empty-state">No batches match.</div>'; return; }
     var t = bbSum(rows);
     var html = '<p class="muted" style="font-size:.8rem;">' + rows.length + ' batches &middot; ' + bbMtFmt(t.mt) + ' MT &middot; ' + inr(t.tot) + ' (' + bbPerMT(t) + '/MT)' + (rows.length > 300 ? ' &middot; showing latest 300' : '') + '</p>';
-    html += '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>Job work for</th><th class="num">MT</th><th class="num">Raw material</th><th class="num">Processing</th><th class="num">Labour</th><th class="num">Total</th><th class="num">&#8377;/Kg</th><th class="num">Job-work revenue</th></tr></thead><tbody>';
+    html += '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Factory</th><th>Product</th><th>Job work for</th><th class="num">MT</th><th class="num">Raw material</th><th class="num">Processing</th><th class="num">Labour</th><th class="num">Total</th><th class="num">&#8377;/Kg</th><th class="num">Job-work revenue</th></tr></thead><tbody>';
     rows.slice(0, 300).forEach(function (d) {
-      html += '<tr><td style="white-space:nowrap;">' + esc(fmtDate ? fmtDate(d.date) : d.date) + '</td><td>' + esc(bbProductName(d)) + (d.remarks ? '<div class="muted">' + esc(d.remarks) + '</div>' : '') + '</td><td>' + esc(d.jobworkCompanyName || "") + '</td>' +
+      html += '<tr><td style="white-space:nowrap;">' + esc(fmtDate ? fmtDate(d.date) : d.date) + '</td><td>' + esc(d.factory || "") + '</td><td>' + esc(bbProductName(d)) + (d.remarks ? '<div class="muted">' + esc(d.remarks) + '</div>' : '') + '</td><td>' + esc(d.jobworkCompanyName || "") + '</td>' +
         '<td class="num">' + bbMtFmt(bbMT(d)) + '</td><td class="num">' + inr(Number(d.rmCost) || 0) + '</td><td class="num">' + inr(Number(d.processingCost) || 0) + '</td><td class="num">' + inr(Number(d.labourCost) || 0) + '</td>' +
         '<td class="num" style="font-weight:700;">' + inr(Number(d.totalCost) || 0) + '</td><td class="num">' + (Number(d.costPerKg) || 0).toFixed(2) + '</td><td class="num">' + (d.jobworkRevenue ? inr(d.jobworkRevenue) : "&ndash;") + '</td></tr>';
     });
@@ -4729,10 +4736,14 @@
   }
 
   function renderBatchBookAll() {
+    var un = bbEntriesRaw.filter(function (d) { return d.factory !== "Orathur" && d.factory !== "Vikravandi"; }).length;
+    var note = document.getElementById("bbUntaggedNote");
+    if (note) note.textContent = un ? un + " batch" + (un === 1 ? " has" : "es have") + " no factory set in Batch Book yet; they only show under Both factories." : "";
     refreshBbFilters();
     renderBbKpis(); renderBbMonthly(); renderBbVsBooks(); renderBbByProduct(); renderBbByCompany(); renderBbMaterials(); renderBbTable();
   }
 
+  document.getElementById("bbFactoryFilter").addEventListener("change", applyFYFilterAndRenderAll);
   ["bbSearch", "bbProductFilter", "bbMonthFilter", "bbTypeFilter"].forEach(function (id) {
     var el = document.getElementById(id); if (el) el.addEventListener(id === "bbSearch" ? "input" : "change", renderBbTable);
   });
@@ -4746,7 +4757,7 @@
   function renderOverallPerformance() {
     var wrap = document.getElementById("overallPerformanceWrap");
     if (!wrap) return;
-    var months = fyMonthsFor([[salesDocs, "date"], [purchaseDocs, "date"], [expenseDocs, "date"], [opDocs, "month"], [receiptDocs, "date"], [paymentDocs, "date"], [bbEntries, "date"]]);
+    var months = fyMonthsFor([[salesDocs, "date"], [purchaseDocs, "date"], [expenseDocs, "date"], [opDocs, "month"], [receiptDocs, "date"], [paymentDocs, "date"], [bbEntriesFY, "date"]]);
     if (!months.length) { wrap.innerHTML = '<div class="empty-state">Nothing recorded for this period yet.</div>'; return; }
     var cats = [];
     expenseDocs.forEach(function (d) { var c = d.category || "Miscellaneous"; if (cats.indexOf(c) < 0) cats.push(c); });
@@ -4756,7 +4767,7 @@
     });
     var M = {};
     months.forEach(function (m) { M[m] = { sales: 0, cn: 0, purch: 0, op: 0, exp: {}, expTot: 0, recv: 0, paid: 0, bbMT: 0, bbCost: 0, jwRev: 0 }; });
-    bbEntries.forEach(function (d) {
+    bbEntriesFY.forEach(function (d) {
       var r = M[String(d.date || "").slice(0, 7)]; if (!r) return;
       r.bbMT += bbMT(d); r.bbCost += Number(d.totalCost) || 0; r.jwRev += Number(d.jobworkRevenue) || 0;
     });
@@ -5209,7 +5220,9 @@
     renderOfficerPayTable();
     renderDispatchRecon();
     renderReceiptsKpis(); renderReceiptsByOfficer(); renderReceiptTable();
-    bbEntries = filterByFY(bbEntriesRaw, "date");
+    var bbF = (document.getElementById("bbFactoryFilter") || {}).value || "";
+    bbEntriesFY = filterByFY(bbEntriesRaw, "date");
+    bbEntries = bbEntriesFY.filter(function (d) { return !bbF || d.factory === bbF; });
     renderExpensesAll();
     renderBatchBookAll();
     renderDashboard();
