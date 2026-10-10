@@ -189,6 +189,7 @@
   nav.tabs button[data-tab="payments"].active { color: var(--indigo); border-bottom-color: var(--indigo); }
   nav.tabs button[data-tab="projections"].active { color: var(--violet); border-bottom-color: var(--violet); }
   nav.tabs button[data-tab="audit"].active { color: var(--rose); border-bottom-color: var(--rose); }
+  nav.tabs button[data-tab="expenses"].active { color: var(--rose); border-bottom-color: var(--rose); }
   nav.tabs button[data-tab="production"].active { color: var(--teal); border-bottom-color: var(--teal); }
   nav.tabs button[data-tab="ledger"].active { color: var(--brand); border-bottom-color: var(--brand); }
   nav.tabs button[data-tab="settings"].active { color: var(--slate); border-bottom-color: var(--slate); }
@@ -567,6 +568,7 @@
     <button class="tab-btn" data-tab="receipts">Receipts</button>
     <button class="tab-btn" data-tab="purchases">Purchases</button>
     <button class="tab-btn" data-tab="payments">Payments</button>
+    <button class="tab-btn" data-tab="expenses">Expenses</button>
     <button class="tab-btn" data-tab="production">Production</button>
     <button class="tab-btn" data-tab="projections">Officer Performance</button>
     <button class="tab-btn" data-tab="audit">Balance Reconciliation</button>
@@ -819,6 +821,81 @@
       </div>
       <div id="paymentFilterSummary"></div>
       <div id="paymentTableWrap"></div>
+    </div>
+  </section>
+
+  <!-- EXPENSES (salaries, maintenance, miscellaneous) -->
+  <section class="panel" id="panel-expenses">
+    <div class="banner bad" id="expensesDbWarning" style="display:none;margin-bottom:14px;">Expenses can't be saved yet &mdash; the database hasn't been opened up for the new Expenses list. Ask your admin to add <code>tracker_expenses</code> to the Firestore rules.</div>
+    <div class="kpi-row" id="expenseKpis"></div>
+
+    <div class="card">
+      <h2>Overall performance (profit &amp; loss)</h2>
+      <p class="hint">Month by month for the financial year selected above. <strong>Gross margin</strong> = Sales &minus; Purchases. <strong>Net profit</strong> = Gross margin &minus; Officer pay (salary &amp; incentive from the Officer Performance tab) &minus; every expense logged on this tab, for both branches (Vikravandi + Orathur) together. Values are taken as recorded &mdash; Tally invoice totals include GST. The cash columns show money actually received from dealers and paid to suppliers, leaving out set-off adjustments.</p>
+      <div id="overallPerformanceWrap"></div>
+    </div>
+
+    <div class="card">
+      <h2 id="expenseFormTitle">Add an expense</h2>
+      <p class="hint">Salaries (staff, labour, drivers), maintenance &amp; repairs, EB bills, fuel, rent, office and any other running cost, for the Vikravandi or Orathur branch. Sales-officer salary &amp; incentive is still entered on the Officer Performance tab &mdash; don't enter it here as well, or it will be counted twice.</p>
+      <form class="entry-form" id="expenseForm">
+        <div class="field"><label for="exDate">Date</label><input type="date" id="exDate" required></div>
+        <div class="field"><label for="exBranch">Branch</label>
+          <select id="exBranch" required><option value="">Select branch&hellip;</option><option>Vikravandi</option><option>Orathur</option></select>
+        </div>
+        <div class="field"><label for="exCategory">Category</label>
+          <select id="exCategory" required><option value="">Select category&hellip;</option><option value="__new__">+ Other category&hellip;</option></select>
+          <input id="exCategoryNew" placeholder="New category" style="display:none;margin-top:6px;">
+        </div>
+        <div class="field"><label for="exCompany">Company</label>
+          <select id="exCompany"><option value="">&ndash;</option><option>EMR Agro Industries</option><option>EMR Agro Traders</option><option>EMR Fertilizers</option><option>EMR Traders</option><option>EMR Vorion</option><option value="__new__">+ Other&hellip;</option></select>
+          <input id="exCompanyNew" placeholder="Company name" style="display:none;margin-top:6px;">
+        </div>
+        <div class="field"><label for="exPaidTo">Paid to / Description</label><input list="expensePayeeList" id="exPaidTo" placeholder="e.g. Staff salary &ndash; September" required></div>
+        <div class="field"><label for="exAmount">Amount (₹)</label><input type="number" step="any" min="0" id="exAmount" required></div>
+        <div class="field"><label for="exMode">Mode</label>
+          <select id="exMode"><option value="">&ndash;</option><option>Cash</option><option>Gpay</option><option>NEFT/RTGS</option><option>Cheque</option><option value="__new__">+ Others&hellip;</option></select>
+          <input id="exModeNew" placeholder="Enter payment mode" style="display:none;margin-top:6px;">
+        </div>
+        <div class="field" id="exEbFields" style="display:none;"><label for="exUnits">EB units consumed (kWh)</label><input type="number" step="any" min="0" id="exUnits" placeholder="optional"></div>
+        <div class="field"><label for="exRef">Reference / Voucher No. / EB service no.</label><input id="exRef" placeholder="optional"></div>
+        <div class="field" style="grid-column: 1 / -1;"><label for="exNotes">Notes</label><input id="exNotes" placeholder="optional"></div>
+        <div class="field"><button type="submit" class="btn btn-primary" id="expenseSubmitBtn">Save expense</button></div>
+        <div class="field"><button type="button" class="btn btn-ghost" id="expenseCancelEdit" style="display:none;">Cancel edit</button></div>
+      </form>
+      <datalist id="expensePayeeList"></datalist>
+    </div>
+
+    <div class="card">
+      <h2>Import from CSV or Excel</h2>
+      <p class="hint">Upload a CSV or Excel (.xlsx/.xls) file of expenses to add many rows at once. The first sheet is used, and column headers can be in any order/case &mdash; recognised names: <code>Date, Branch, Category, Company, Paid To, Amount, Units, Mode, Reference, Notes</code>. Only Date and Amount are required; rows with no Category are filed under Miscellaneous, and Branch must be Vikravandi or Orathur (left blank otherwise).</p>
+      <input type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" id="expenseCsvInput">
+      <div id="expenseCsvStatus"></div>
+    </div>
+
+    <div class="card">
+      <h2>Expenses by category</h2>
+      <p class="hint">Each category's total for every month of the year selected above &mdash; both branches together, or pick one branch.</p>
+      <div class="filter-row"><select id="expenseCatBranchFilter"><option value="">Both branches (total)</option><option>Vikravandi</option><option>Orathur</option></select></div>
+      <div id="expenseByCategoryWrap"></div>
+    </div>
+
+    <div class="card">
+      <h2>Expenses by branch</h2>
+      <p class="hint">Vikravandi and Orathur side by side for each category, with the combined total.</p>
+      <div id="expenseByBranchWrap"></div>
+    </div>
+
+    <div class="card">
+      <h2>Expense log</h2>
+      <div class="filter-row">
+        <input type="search" id="expenseSearch" placeholder="Search paid to, notes, reference&hellip;" style="min-width:220px;">
+        <select id="expenseBranchFilter"><option value="">Both branches</option><option>Vikravandi</option><option>Orathur</option></select>
+        <select id="expenseCategoryFilter"><option value="">All categories</option></select>
+        <select id="expenseCompanyFilter"><option value="">All companies</option></select>
+      </div>
+      <div id="expenseFilterSummary"></div>
+      <div id="expenseTableWrap"></div>
     </div>
   </section>
 
@@ -1152,6 +1229,11 @@
   var salesDocsRaw = [];
   var purchaseDocsRaw = [];
   var paymentDocsRaw = [];
+  var expenseDocsRaw = [];
+  var expenseDocs = [];
+  var editingExpenseId = null;
+  var EXPENSE_BRANCHES = ["Vikravandi", "Orathur"];
+  var EXPENSE_CATEGORIES = ["Salaries & Wages", "Maintenance & Repairs", "EB Bills", "Fuel & Transport", "Rent", "Office & Admin", "Miscellaneous"];
   var productionDocsRaw = [];
   var opDocsRaw = [];
   var dispatchSyncDocsRaw = [];
@@ -2014,7 +2096,11 @@
     function next() {
       if (idx >= docs.length) return Promise.resolve();
       var d = docs[idx++];
-      return db.collection(collectionName).add(d).catch(function () { failed++; }).then(function () {
+      // Firestore rules only allow the "tracker_"-prefixed collections, so
+      // short names like "sales" must be prefixed here (same as deleteDoc) —
+      // without it every spreadsheet import row was rejected.
+      var fullColl = collectionName.indexOf("tracker_") === 0 ? collectionName : "tracker_" + collectionName;
+      return db.collection(fullColl).add(d).catch(function (err) { console.error(err); failed++; }).then(function () {
         done++;
         statusEl.innerHTML = '<div class="banner">Importing ' + done + " / " + total + '&hellip;</div>';
         return next();
@@ -4203,6 +4289,416 @@
     this.style.display = "none";
   });
 
+
+  // ---------- expenses (salaries, maintenance, miscellaneous) ----------
+  function expenseCategoryList() {
+    var cats = EXPENSE_CATEGORIES.slice();
+    expenseDocsRaw.forEach(function (d) { var c = (d.category || "").trim(); if (c && cats.indexOf(c) < 0) cats.push(c); });
+    return cats;
+  }
+  function refreshExpenseSelects() {
+    var cats = expenseCategoryList();
+    var catSel = document.getElementById("exCategory");
+    if (catSel) {
+      var cur = catSel.value;
+      catSel.innerHTML = '<option value="">Select category&hellip;</option>' + cats.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join("") + '<option value="__new__">+ Other category&hellip;</option>';
+      if (cur && (cur === "__new__" || cats.indexOf(cur) >= 0)) catSel.value = cur;
+    }
+    var catFilter = document.getElementById("expenseCategoryFilter");
+    if (catFilter) {
+      var cf = catFilter.value;
+      catFilter.innerHTML = '<option value="">All categories</option>' + cats.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join("");
+      if (cf && cats.indexOf(cf) >= 0) catFilter.value = cf;
+    }
+    var compFilter = document.getElementById("expenseCompanyFilter");
+    if (compFilter) {
+      var comps = [];
+      expenseDocsRaw.forEach(function (d) { var c = (d.company || "").trim(); if (c && comps.indexOf(c) < 0) comps.push(c); });
+      comps.sort();
+      var cc = compFilter.value;
+      compFilter.innerHTML = '<option value="">All companies</option>' + comps.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join("");
+      if (cc && comps.indexOf(cc) >= 0) compFilter.value = cc;
+    }
+    var dl = document.getElementById("expensePayeeList");
+    if (dl) {
+      var payees = [];
+      expenseDocsRaw.forEach(function (d) { var p = (d.paidTo || "").trim(); if (p && payees.indexOf(p) < 0) payees.push(p); });
+      dl.innerHTML = payees.sort().map(function (p) { return '<option value="' + esc(p) + '">'; }).join("");
+    }
+  }
+
+  function renderExpenseKpis() {
+    var el = document.getElementById("expenseKpis");
+    if (!el) return;
+    var total = 0, byCat = {}, byBranch = {};
+    expenseDocs.forEach(function (d) {
+      var a = Number(d.amount) || 0; total += a;
+      var b = d.branch || "No branch"; byBranch[b] = (byBranch[b] || 0) + a;
+      var c = d.category || "Miscellaneous"; byCat[c] = (byCat[c] || 0) + a;
+    });
+    var opPay = 0; opDocs.forEach(function (d) { opPay += (Number(d.salary) || 0) + (Number(d.incentive) || 0); });
+    var salaries = byCat["Salaries & Wages"] || 0;
+    var maint = byCat["Maintenance & Repairs"] || 0;
+    var eb = byCat["EB Bills"] || 0;
+    var other = total - salaries - maint - eb;
+    el.innerHTML =
+      '<div class="kpi"><div class="label">Total expenses</div><div class="value">' + inr(total) + '</div><div class="officer-meta" style="margin-top:2px;">both branches</div></div>' +
+      '<div class="kpi"><div class="label">Vikravandi</div><div class="value">' + inr(byBranch["Vikravandi"] || 0) + '</div></div>' +
+      '<div class="kpi"><div class="label">Orathur</div><div class="value">' + inr(byBranch["Orathur"] || 0) + '</div>' + (byBranch["No branch"] ? '<div class="officer-meta" style="margin-top:2px;">+ ' + inr(byBranch["No branch"]) + ' no branch set</div>' : '') + '</div>' +
+      '<div class="kpi"><div class="label">Salaries &amp; wages</div><div class="value">' + inr(salaries) + '</div><div class="officer-meta" style="margin-top:2px;">+ ' + inr(opPay) + ' officer pay</div></div>' +
+      '<div class="kpi"><div class="label">Maintenance</div><div class="value">' + inr(maint) + '</div></div>' +
+      '<div class="kpi"><div class="label">EB bills</div><div class="value">' + inr(eb) + '</div></div>' +
+      '<div class="kpi"><div class="label">Other expenses</div><div class="value">' + inr(other) + '</div></div>' +
+      '';
+  }
+
+  function fyMonthsFor(docsLists) {
+    // Months to show: every month of the selected FY up to the current
+    // month, or (All time) every month that has any data at all.
+    var months = [];
+    if (currentFY !== "all") {
+      var today = todayISO().slice(0, 7);
+      for (var i = 0; i < 12; i++) {
+        var y = currentFY + (i >= 9 ? 1 : 0), m = ((i + 3) % 12) + 1;
+        var key = y + "-" + (m < 10 ? "0" : "") + m;
+        if (key > today) break;
+        months.push(key);
+      }
+      return months;
+    }
+    docsLists.forEach(function (pair) {
+      pair[0].forEach(function (d) { var k = String(d[pair[1]] || "").slice(0, 7); if (/^\d{4}-\d{2}$/.test(k) && months.indexOf(k) < 0) months.push(k); });
+    });
+    return months.sort();
+  }
+
+  function renderExpenseByCategory() {
+    var wrap = document.getElementById("expenseByCategoryWrap");
+    if (!wrap) return;
+    if (!expenseDocs.length) { wrap.innerHTML = '<div class="empty-state"><strong>No expenses logged yet</strong>Add your first expense using the form above.</div>'; return; }
+    var bf = (document.getElementById("expenseCatBranchFilter") || {}).value || "";
+    var src = bf ? expenseDocs.filter(function (d) { return (d.branch || "") === bf; }) : expenseDocs;
+    if (!src.length) { wrap.innerHTML = '<div class="empty-state">No expenses for ' + esc(bf) + ' in this period.</div>'; return; }
+    var months = fyMonthsFor([[src, "date"]]);
+    var cats = [], grid = {}, colTot = {}, grand = 0;
+    src.forEach(function (d) {
+      var c = d.category || "Miscellaneous", m = String(d.date || "").slice(0, 7), a = Number(d.amount) || 0;
+      if (cats.indexOf(c) < 0) cats.push(c);
+      grid[c] = grid[c] || {}; grid[c][m] = (grid[c][m] || 0) + a;
+      colTot[m] = (colTot[m] || 0) + a; grand += a;
+    });
+    cats.sort(function (a, b) {
+      var ia = EXPENSE_CATEGORIES.indexOf(a), ib = EXPENSE_CATEGORIES.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+    var html = '<div class="table-wrap"><table><thead><tr><th>Category</th>' +
+      months.map(function (m) { return '<th class="num">' + esc(monthLabel(m)) + '</th>'; }).join("") +
+      '<th class="num">Total</th><th class="num">Share</th></tr></thead><tbody>';
+    cats.forEach(function (c) {
+      var rowTot = 0;
+      html += '<tr><td>' + esc(c) + '</td>' + months.map(function (m) {
+        var v = (grid[c] && grid[c][m]) || 0; rowTot += v;
+        return '<td class="num">' + (v ? inr(v) : '&ndash;') + '</td>';
+      }).join("");
+      html += '<td class="num" style="font-weight:700;">' + inr(rowTot) + '</td><td class="num">' + (grand ? (rowTot / grand * 100).toFixed(1) : "0.0") + '%</td></tr>';
+    });
+    html += '<tr style="font-weight:700;border-top:2px solid var(--border);"><td>Total</td>' +
+      months.map(function (m) { return '<td class="num">' + inr(colTot[m] || 0) + '</td>'; }).join("") +
+      '<td class="num">' + inr(grand) + '</td><td class="num">100%</td></tr>';
+    html += '</tbody></table></div>';
+    wrap.innerHTML = html;
+  }
+
+  function getExpenseFilterState() {
+    var q = ((document.getElementById("expenseSearch") || {}).value || "").toLowerCase();
+    var cat = (document.getElementById("expenseCategoryFilter") || {}).value || "";
+    var comp = (document.getElementById("expenseCompanyFilter") || {}).value || "";
+    var br = (document.getElementById("expenseBranchFilter") || {}).value || "";
+    var rows = expenseDocs.filter(function (d) {
+      if (br && (d.branch || "") !== br) return false;
+      if (cat && (d.category || "Miscellaneous") !== cat) return false;
+      if (comp && (d.company || "") !== comp) return false;
+      if (!q) return true;
+      return [d.paidTo, d.category, d.company, d.mode, d.reference, d.notes].join(" ").toLowerCase().indexOf(q) >= 0;
+    });
+    return { rows: rows, cat: cat, comp: comp, branch: br };
+  }
+
+  function renderExpenseTable() {
+    var state = getExpenseFilterState(), rows = state.rows;
+    var sumEl = document.getElementById("expenseFilterSummary");
+    if (sumEl) {
+      var t = 0; rows.forEach(function (d) { t += Number(d.amount) || 0; });
+      sumEl.innerHTML = rows.length ? ('<div class="filter-summary-row"><span class="tag' + (state.cat ? "" : " slate") + '">' + esc(state.cat || "All categories") + '</span>' +
+        '<span class="tag' + (state.branch ? "" : " slate") + '">' + esc(state.branch || "Both branches") + '</span>' +
+        (state.comp ? '<span class="tag">' + esc(state.comp) + '</span>' : '') +
+        '<span class="tag indigo">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + '</span><span class="tag">Total: ' + inr(t) + '</span></div>') : "";
+    }
+    var wrap = document.getElementById("expenseTableWrap");
+    if (!wrap) return;
+    if (!expenseDocs.length) { wrap.innerHTML = '<div class="empty-state"><strong>No expenses logged yet</strong>Add your first expense using the form above.</div>'; return; }
+    if (!rows.length) { wrap.innerHTML = '<div class="empty-state">No entries match that search/filter.</div>'; return; }
+    var sorted = rows.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); });
+    var html = '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Branch</th><th>Category</th><th>Paid to / Description</th><th>Mode</th><th class="num">Amount</th><th></th></tr></thead><tbody>';
+    sorted.slice(0, 500).forEach(function (d) {
+      var sub = [];
+      if (d.company) sub.push(esc(d.company));
+      if (d.units) sub.push(esc(d.units) + " units");
+      if (d.reference) sub.push("Ref# " + esc(d.reference));
+      if (d.notes) sub.push(esc(d.notes));
+      html += '<tr><td>' + esc(fmtDate(d.date)) + '</td><td>' + (d.branch ? esc(d.branch) : '<span class="muted">&ndash;</span>') + '</td><td><span class="tag slate">' + esc(d.category || "Miscellaneous") + '</span></td>' +
+        '<td>' + esc(d.paidTo || "") + '<div class="muted">' + sub.join(" &middot; ") + '</div></td>' +
+        '<td>' + (d.mode ? esc(d.mode) : '&ndash;') + '</td>' +
+        '<td class="num" style="font-weight:700;">' + inr(d.amount) + '</td>' +
+        '<td style="white-space:nowrap;"><button class="btn-ghost" style="padding:4px 8px;font-size:.76rem;" data-edit-expense="' + esc(d.id) + '">Edit</button> <button class="btn-danger-ghost" data-del-expense="' + esc(d.id) + '">Delete</button></td></tr>';
+    });
+    html += '</tbody></table></div>';
+    if (rows.length > 500) html += '<p class="muted" style="margin:8px 4px 0;font-size:.78rem;">Showing first 500 of ' + rows.length + ' matching rows.</p>';
+    wrap.innerHTML = html;
+    wrap.querySelectorAll("[data-del-expense]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        appConfirm("Delete this expense? This action cannot be undone.").then(function (ok) { if (ok) deleteDoc("expenses", btn.getAttribute("data-del-expense")); });
+      });
+    });
+    wrap.querySelectorAll("[data-edit-expense]").forEach(function (btn) {
+      btn.addEventListener("click", function () { startEditExpense(btn.getAttribute("data-edit-expense")); });
+    });
+  }
+
+  function startEditExpense(id) {
+    var rec = expenseDocsRaw.filter(function (d) { return d.id === id; })[0];
+    if (!rec) return;
+    editingExpenseId = id;
+    document.getElementById("exDate").value = rec.date || "";
+    document.getElementById("exBranch").value = rec.branch || "";
+    setSelectOrNew("exCategory", "exCategoryNew", rec.category || "");
+    document.getElementById("exUnits").value = rec.units || "";
+    toggleExpenseEbFields();
+    setSelectOrNew("exCompany", "exCompanyNew", rec.company || "");
+    document.getElementById("exPaidTo").value = rec.paidTo || "";
+    document.getElementById("exAmount").value = rec.amount || "";
+    setSelectOrNew("exMode", "exModeNew", rec.mode || "");
+    document.getElementById("exRef").value = rec.reference || "";
+    document.getElementById("exNotes").value = rec.notes || "";
+    document.getElementById("expenseFormTitle").textContent = "Editing: " + (rec.paidTo || rec.category || "expense") + " (" + fmtDate(rec.date) + ")";
+    document.getElementById("expenseSubmitBtn").textContent = "Save changes";
+    document.getElementById("expenseCancelEdit").style.display = "inline-block";
+    document.getElementById("panel-expenses").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function resetExpenseForm() {
+    editingExpenseId = null;
+    document.getElementById("expenseForm").reset();
+    document.getElementById("exDate").value = todayISO();
+    document.getElementById("expenseFormTitle").textContent = "Add an expense";
+    document.getElementById("expenseSubmitBtn").textContent = "Save expense";
+    document.getElementById("expenseCancelEdit").style.display = "none";
+    resetCombo("exCategoryNew"); resetCombo("exCompanyNew"); resetCombo("exModeNew");
+    toggleExpenseEbFields();
+  }
+
+  function isAdjustmentEntry(d) {
+    return /adjust/i.test(d.mode || "") || /set-off/i.test(d.source || "");
+  }
+
+  function renderOverallPerformance() {
+    var wrap = document.getElementById("overallPerformanceWrap");
+    if (!wrap) return;
+    var months = fyMonthsFor([[salesDocs, "date"], [purchaseDocs, "date"], [expenseDocs, "date"], [opDocs, "month"], [receiptDocs, "date"], [paymentDocs, "date"]]);
+    if (!months.length) { wrap.innerHTML = '<div class="empty-state">Nothing recorded for this period yet.</div>'; return; }
+    var cats = [];
+    expenseDocs.forEach(function (d) { var c = d.category || "Miscellaneous"; if (cats.indexOf(c) < 0) cats.push(c); });
+    cats.sort(function (a, b) {
+      var ia = EXPENSE_CATEGORIES.indexOf(a), ib = EXPENSE_CATEGORIES.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+    var M = {};
+    months.forEach(function (m) { M[m] = { sales: 0, purch: 0, op: 0, exp: {}, expTot: 0, recv: 0, paid: 0 }; });
+    function add(m, k, v) { if (M[m]) M[m][k] += v; }
+    salesDocs.forEach(function (d) { add(String(d.date || "").slice(0, 7), "sales", Number(d.value) || 0); });
+    purchaseDocs.forEach(function (d) { add(String(d.date || "").slice(0, 7), "purch", Number(d.value) || 0); });
+    opDocs.forEach(function (d) { add(String(d.month || "").slice(0, 7), "op", (Number(d.salary) || 0) + (Number(d.incentive) || 0)); });
+    expenseDocs.forEach(function (d) {
+      var m = String(d.date || "").slice(0, 7); if (!M[m]) return;
+      var c = d.category || "Miscellaneous", a = Number(d.amount) || 0;
+      M[m].exp[c] = (M[m].exp[c] || 0) + a; M[m].expTot += a;
+    });
+    receiptDocs.forEach(function (d) { if (!isAdjustmentEntry(d)) add(String(d.date || "").slice(0, 7), "recv", Number(d.amount) || 0); });
+    paymentDocs.forEach(function (d) { if (!isAdjustmentEntry(d)) add(String(d.date || "").slice(0, 7), "paid", Number(d.amount) || 0); });
+
+    var T = { sales: 0, purch: 0, op: 0, exp: {}, expTot: 0, recv: 0, paid: 0 };
+    months.forEach(function (m) {
+      var r = M[m];
+      T.sales += r.sales; T.purch += r.purch; T.op += r.op; T.expTot += r.expTot; T.recv += r.recv; T.paid += r.paid;
+      cats.forEach(function (c) { T.exp[c] = (T.exp[c] || 0) + (r.exp[c] || 0); });
+    });
+
+    function signed(v) { return '<span class="' + (v < 0 ? "trend-down" : "trend-up") + '">' + inr(v) + '</span>'; }
+    function line(label, getter, opts) {
+      opts = opts || {};
+      var style = opts.bold ? ' style="font-weight:700;' + (opts.top ? 'border-top:2px solid var(--border);' : '') + '"' : (opts.top ? ' style="border-top:2px solid var(--border);"' : '');
+      var h = '<tr' + style + '><td' + (opts.indent ? ' style="padding-left:22px;"' : '') + '>' + label + '</td>';
+      months.forEach(function (m) { var v = getter(M[m]); h += '<td class="num">' + (opts.signed ? signed(v) : (v ? inr(v) : '&ndash;')) + '</td>'; });
+      var tv = getter(T);
+      h += '<td class="num" style="font-weight:700;">' + (opts.signed ? signed(tv) : inr(tv)) + '</td></tr>';
+      return h;
+    }
+    var gross = function (r) { return r.sales - r.purch; };
+    var totalCost = function (r) { return r.op + r.expTot; };
+    var net = function (r) { return r.sales - r.purch - r.op - r.expTot; };
+
+    var netTotal = net(T), grossTotal = gross(T);
+    var margin = T.sales ? (netTotal / T.sales * 100) : 0;
+    var html = '<div class="kpi-row" style="margin-bottom:14px;">' +
+      '<div class="kpi"><div class="label">Sales</div><div class="value">' + inr(T.sales) + '</div></div>' +
+      '<div class="kpi"><div class="label">Gross margin</div><div class="value ' + (grossTotal >= 0 ? "good" : "bad") + '">' + inr(grossTotal) + '</div><div class="officer-meta" style="margin-top:2px;">sales &minus; purchases</div></div>' +
+      '<div class="kpi"><div class="label">Salaries &amp; expenses</div><div class="value">' + inr(totalCost(T)) + '</div><div class="officer-meta" style="margin-top:2px;">officer pay + this tab</div></div>' +
+      '<div class="kpi"><div class="label">Net profit</div><div class="value ' + (netTotal >= 0 ? "good" : "bad") + '">' + inr(netTotal) + '</div><div class="officer-meta" style="margin-top:2px;">' + margin.toFixed(1) + '% of sales</div></div>' +
+      '<div class="kpi"><div class="label">Net cash flow</div><div class="value ' + (T.recv - T.paid - T.op - T.expTot >= 0 ? "good" : "bad") + '">' + inr(T.recv - T.paid - T.op - T.expTot) + '</div><div class="officer-meta" style="margin-top:2px;">received &minus; paid &minus; costs</div></div>' +
+      '</div>';
+    html += '<div class="table-wrap"><table><thead><tr><th></th>' + months.map(function (m) { return '<th class="num">' + esc(monthLabel(m)) + '</th>'; }).join("") + '<th class="num">Total</th></tr></thead><tbody>';
+    html += line("Sales", function (r) { return r.sales; }, { bold: true });
+    html += line("Less: Purchases", function (r) { return r.purch; });
+    html += line("Gross margin", gross, { bold: true, top: true, signed: true });
+    html += line("Officer salary &amp; incentive", function (r) { return r.op; }, { indent: true });
+    cats.forEach(function (c) { html += line(esc(c), function (r) { return (r.exp && r.exp[c]) || 0; }, { indent: true }); });
+    html += line("Total salaries &amp; expenses", totalCost, { top: true });
+    html += line("Net profit / (loss)", net, { bold: true, top: true, signed: true });
+    html += '<tr><td colspan="' + (months.length + 2) + '" class="muted" style="padding-top:14px;font-size:.78rem;">Cash view (bank/cash movements, set-off adjustments excluded)</td></tr>';
+    html += line("Received from dealers", function (r) { return r.recv; });
+    html += line("Paid to suppliers", function (r) { return r.paid; });
+    html += line("Net cash flow", function (r) { return r.recv - r.paid - r.op - r.expTot; }, { bold: true, top: true, signed: true });
+    html += '</tbody></table></div>';
+    wrap.innerHTML = html;
+  }
+
+  function renderExpenseByBranch() {
+    var wrap = document.getElementById("expenseByBranchWrap");
+    if (!wrap) return;
+    if (!expenseDocs.length) { wrap.innerHTML = '<div class="empty-state">No expenses logged yet.</div>'; return; }
+    var branches = EXPENSE_BRANCHES.slice();
+    var hasNone = expenseDocs.some(function (d) { return !d.branch; });
+    if (hasNone) branches.push("No branch");
+    var cats = [], grid = {}, bTot = {}, grand = 0;
+    expenseDocs.forEach(function (d) {
+      var c = d.category || "Miscellaneous", b = d.branch || "No branch", a = Number(d.amount) || 0;
+      if (cats.indexOf(c) < 0) cats.push(c);
+      grid[c] = grid[c] || {}; grid[c][b] = (grid[c][b] || 0) + a;
+      bTot[b] = (bTot[b] || 0) + a; grand += a;
+    });
+    cats.sort(function (a, b) {
+      var ia = EXPENSE_CATEGORIES.indexOf(a), ib = EXPENSE_CATEGORIES.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+    var html = '<div class="table-wrap"><table><thead><tr><th>Category</th>' + branches.map(function (b) { return '<th class="num">' + esc(b) + '</th>'; }).join("") + '<th class="num">Total</th></tr></thead><tbody>';
+    cats.forEach(function (c) {
+      var t = 0;
+      html += '<tr><td>' + esc(c) + '</td>' + branches.map(function (b) { var v = (grid[c] && grid[c][b]) || 0; t += v; return '<td class="num">' + (v ? inr(v) : '&ndash;') + '</td>'; }).join("") +
+        '<td class="num" style="font-weight:700;">' + inr(t) + '</td></tr>';
+    });
+    html += '<tr style="font-weight:700;border-top:2px solid var(--border);"><td>Total</td>' + branches.map(function (b) { return '<td class="num">' + inr(bTot[b] || 0) + '</td>'; }).join("") + '<td class="num">' + inr(grand) + '</td></tr>';
+    html += '</tbody></table></div>';
+    wrap.innerHTML = html;
+  }
+
+  function renderExpensesAll() {
+    refreshExpenseSelects();
+    renderExpenseKpis();
+    renderOverallPerformance();
+    renderExpenseByCategory();
+    renderExpenseByBranch();
+    renderExpenseTable();
+  }
+
+  function toggleExpenseEbFields() {
+    var isEb = comboValue("exCategory", "exCategoryNew") === "EB Bills";
+    var f = document.getElementById("exEbFields");
+    if (f) f.style.display = isEb ? "" : "none";
+  }
+
+  document.getElementById("expenseForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!db) return;
+    var category = comboValue("exCategory", "exCategoryNew");
+    if (!category) { appAlert("Choose a category, or pick \"+ Other category…\" and type one."); return; }
+    var branch = document.getElementById("exBranch").value;
+    if (!branch) { appAlert("Choose the branch: Vikravandi or Orathur."); return; }
+    var btn = e.target.querySelector("button[type=submit]");
+    btn.disabled = true;
+    var payload = {
+      date: document.getElementById("exDate").value,
+      branch: branch,
+      category: category,
+      company: comboValue("exCompany", "exCompanyNew"),
+      units: category === "EB Bills" ? (Number(document.getElementById("exUnits").value) || 0) : 0,
+      paidTo: document.getElementById("exPaidTo").value.trim(),
+      amount: Number(document.getElementById("exAmount").value) || 0,
+      mode: comboValue("exMode", "exModeNew"),
+      reference: document.getElementById("exRef").value.trim(),
+      notes: document.getElementById("exNotes").value.trim(),
+      updatedAt: new Date().toISOString()
+    };
+    if (!editingExpenseId) { payload.source = "Manual entry"; payload.createdAt = payload.updatedAt; }
+    var op = editingExpenseId ? db.collection("tracker_expenses").doc(editingExpenseId).update(payload) : db.collection("tracker_expenses").add(payload);
+    op.then(function () { resetExpenseForm(); })
+      .catch(function (err) {
+        console.error(err);
+        appAlert(err && err.code === "permission-denied"
+          ? "Could not save — the database doesn't allow the new Expenses list yet (tracker_expenses needs adding to the Firestore rules)."
+          : "Could not save that expense — please try again.");
+      })
+      .finally(function () { btn.disabled = false; });
+  });
+  document.getElementById("expenseCancelEdit").addEventListener("click", resetExpenseForm);
+  document.getElementById("expenseSearch").addEventListener("input", renderExpenseTable);
+  document.getElementById("expenseCategoryFilter").addEventListener("change", renderExpenseTable);
+  document.getElementById("expenseCompanyFilter").addEventListener("change", renderExpenseTable);
+  document.getElementById("expenseBranchFilter").addEventListener("change", renderExpenseTable);
+  document.getElementById("expenseCatBranchFilter").addEventListener("change", renderExpenseByCategory);
+  document.getElementById("exCategory").addEventListener("change", toggleExpenseEbFields);
+  wireCombo("exCategory", "exCategoryNew");
+  wireCombo("exCompany", "exCompanyNew");
+  wireCombo("exMode", "exModeNew");
+  document.getElementById("exDate").value = todayISO();
+
+  document.getElementById("expenseCsvInput").addEventListener("change", function (e) {
+    var file = e.target.files[0]; if (!file) return;
+    var statusEl = document.getElementById("expenseCsvStatus");
+    e.target.value = "";
+    if (!db) { statusEl.innerHTML = '<div class="banner bad">Not connected to the shared data store right now.</div>'; return; }
+    statusEl.innerHTML = '<div class="banner">Reading &ldquo;' + esc(file.name) + '&rdquo;&hellip;</div>';
+    readSpreadsheetRows(file).then(function (rows) {
+      var docs = [], skipped = 0;
+      rows.forEach(function (obj) {
+        var date = parseDateFlexible(pickField(obj, ["date", "expensedate", "voucherdate"]));
+        var amount = numField(obj, ["amount", "value", "debit", "expense", "amountpaid"]);
+        if (!date || !amount) { skipped++; return; }
+        var brRaw = pickField(obj, ["branch", "unit", "location", "site", "plant"]).toLowerCase();
+        var branch = /vikra/.test(brRaw) ? "Vikravandi" : (/orath|oratt/.test(brRaw) ? "Orathur" : "");
+        docs.push({
+          date: date,
+          branch: branch,
+          units: numField(obj, ["units", "kwh", "unitsconsumed"]),
+          category: pickField(obj, ["category", "head", "expensehead", "type", "ledger"]) || "Miscellaneous",
+          company: pickField(obj, ["company", "companyname", "firm", "entity"]),
+          paidTo: pickField(obj, ["paidto", "payee", "description", "particulars", "party", "name"]),
+          amount: amount,
+          mode: pickField(obj, ["mode", "paymentmode", "paidvia"]),
+          reference: pickField(obj, ["reference", "referenceno", "voucherno", "vchno", "ref"]),
+          notes: pickField(obj, ["notes", "remarks", "narration"]),
+          createdAt: new Date().toISOString(),
+          source: "Spreadsheet import"
+        });
+      });
+      if (!docs.length) { statusEl.innerHTML = '<div class="banner bad">No valid rows found &mdash; each row needs at least a Date and an Amount.</div>'; return; }
+      var msg = "Import " + docs.length + " expense row" + (docs.length === 1 ? "" : "s") + (skipped ? (" (" + skipped + " skipped for missing Date or Amount)") : "") + "?";
+      showImportConfirm(statusEl, esc(msg), function () { bulkAdd("expenses", docs, statusEl); });
+    }).catch(function (err) {
+      console.error(err);
+      statusEl.innerHTML = '<div class="banner bad">' + spreadsheetErrorMessage(err) + '</div>';
+    });
+  });
+
   // ---------- rendering: production & job-work (Batch Book) ----------
   function renderProductionKpis() {
     var totalOutput = 0, totalRevenue = 0, totalCost = 0, totalProfit = 0;
@@ -4382,6 +4878,7 @@
     collect(salesDocsRaw, "date");
     collect(purchaseDocsRaw, "date");
     collect(paymentDocsRaw, "date");
+    collect(expenseDocsRaw, "date");
     collect(productionDocsRaw, "date");
     collect(opDocsRaw, "month");
     collect(dispatchSyncDocsRaw, "date");
@@ -4415,6 +4912,7 @@
     salesDocs = filterByFY(salesDocsRaw, "date");
     purchaseDocs = filterByFY(purchaseDocsRaw, "date");
     paymentDocs = filterByFY(paymentDocsRaw, "date");
+    expenseDocs = filterByFY(expenseDocsRaw, "date");
     productionDocs = filterByFY(productionDocsRaw, "date");
     opDocs = filterByFY(opDocsRaw, "month");
     dispatchSyncDocs = filterByFY(dispatchSyncDocsRaw, "date");
@@ -4427,6 +4925,7 @@
     renderOfficerPayTable();
     renderDispatchRecon();
     renderReceiptsKpis(); renderReceiptsByOfficer(); renderReceiptTable();
+    renderExpensesAll();
     renderDashboard();
     renderDealerLedger();
     renderOfficerLedger();
@@ -6423,7 +6922,8 @@
     { key: "tracker_production", sheet: "Production" },
     { key: "tracker_dispatchSync", sheet: "DispatchSync" },
     { key: "tracker_syncMeta", sheet: "SyncMeta" },
-    { key: "tracker_productAlias", sheet: "ProductAlias" }
+    { key: "tracker_productAlias", sheet: "ProductAlias" },
+    { key: "tracker_expenses", sheet: "Expenses" }
   ];
 
   // Pulls every document out of every tracker_ collection fresh from Firestore
@@ -6553,7 +7053,7 @@
       });
     }
 
-    db.collection("tracker_sales").orderBy("date", "desc").limit(1000).onSnapshot(function (snap) {
+    db.collection("tracker_sales").orderBy("date", "desc").limit(5000).onSnapshot(function (snap) {
       salesDocsRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       refreshDatalists(); refreshDealerSelect(); refreshPartySelect(); populateStatementOfficerSelect();
       refreshLedgerDealerSelect(); refreshLedgerOfficerSelect();
@@ -6561,14 +7061,24 @@
       applyFYFilterAndRenderAll();
     }, function (e) { console.error("sales sub error", e); });
 
-    db.collection("tracker_purchases").orderBy("date", "desc").limit(1000).onSnapshot(function (snap) {
+    db.collection("tracker_purchases").orderBy("date", "desc").limit(5000).onSnapshot(function (snap) {
       purchaseDocsRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       refreshSupplierSelect(); refreshPartySelect(); refreshLedgerVendorSelect();
       refreshFYOptions();
       applyFYFilterAndRenderAll();
     }, function (e) { console.error("purchases sub error", e); });
 
-    db.collection("tracker_payments").orderBy("date", "desc").limit(1000).onSnapshot(function (snap) {
+    db.collection("tracker_expenses").orderBy("date", "desc").limit(5000).onSnapshot(function (snap) {
+      expenseDocsRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      var w = document.getElementById("expensesDbWarning"); if (w) w.style.display = "none";
+      refreshFYOptions();
+      applyFYFilterAndRenderAll();
+    }, function (e) {
+      console.error("expenses sub error", e);
+      var w = document.getElementById("expensesDbWarning"); if (w) w.style.display = "block";
+    });
+
+    db.collection("tracker_payments").orderBy("date", "desc").limit(5000).onSnapshot(function (snap) {
       paymentDocsRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       refreshSupplierSelect(); refreshLedgerVendorSelect();
       refreshFYOptions();
