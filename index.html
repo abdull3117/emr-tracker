@@ -194,6 +194,15 @@
   nav.tabs button[data-tab="expenses"].active { color: var(--rose); border-bottom-color: var(--rose); }
   nav.tabs button[data-tab="production"].active { color: var(--teal); border-bottom-color: var(--teal); }
   nav.tabs button[data-tab="batchbook"].active { color: var(--teal); border-bottom-color: var(--teal); }
+  nav.tabs button[data-tab="cashbook"].active { color: var(--indigo); border-bottom-color: var(--indigo); }
+  .cb-ok { color: var(--good); font-weight: 600; }
+  .cb-bad { color: var(--bad); font-weight: 600; }
+  .cb-warn { color: var(--warn); font-weight: 600; }
+  .cb-tag { display:inline-block; font-size:.72rem; font-weight:600; padding:1px 8px; border-radius:999px; background: var(--surface-2); border:1px solid var(--border); color: var(--ink-2); white-space: nowrap; }
+  .cb-controls { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+  .cb-controls .field { display:flex; flex-direction:column; gap:4px; }
+  .cb-controls label { font-size:.72rem; color: var(--ink-2); font-weight:600; }
+  .cb-controls select, .cb-controls input { font-family:inherit; font-size:.88rem; background: var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:7px 9px; color: var(--ink); }
   #panel-batchbook .dash-grid { grid-template-columns: 1fr; }
   #panel-batchbook .dash-grid > .card { min-width: 0; }
   .bb-frame { width: 100%; height: 900px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
@@ -596,6 +605,7 @@
     <button class="tab-btn" data-tab="purchases">Purchases</button>
     <button class="tab-btn" data-tab="payments">Payments</button>
     <button class="tab-btn" data-tab="expenses">Expenses</button>
+    <button class="tab-btn" data-tab="cashbook">Cash Book</button>
     <button class="tab-btn" data-tab="production">Production</button>
     <button class="tab-btn" data-tab="batchbook">Production Expenses</button>
     <button class="tab-btn" data-tab="projections">Officer Performance</button>
@@ -930,6 +940,67 @@
       </div>
       <div id="expenseFilterSummary"></div>
       <div id="expenseTableWrap"></div>
+    </div>
+  </section>
+
+  <!-- CASH BOOK -->
+  <section class="panel" id="panel-cashbook">
+    <div class="banner bad" id="cbDbWarning" style="display:none;margin-bottom:14px;">The Cash Book can't be read &mdash; check the internet connection and reload.</div>
+    <div class="card" style="padding:12px 16px;">
+      <div class="cb-controls">
+        <div class="field"><label for="cbBook">Cash book</label><select id="cbBook"><option value="Orathur">Orathur &mdash; main book</option><option value="Vikravandi">Vikravandi &mdash; VKD book</option></select></div>
+        <div class="field"><label for="cbDate">Date</label><input type="date" id="cbDate"></div>
+        <button type="button" class="btn btn-ghost" id="cbPrev">&larr; Previous day</button>
+        <button type="button" class="btn btn-ghost" id="cbNext">Next day &rarr;</button>
+        <button type="button" class="btn btn-ghost" id="cbLatest">Latest day</button>
+      </div>
+    </div>
+    <div class="kpi-row" id="cbKpis"></div>
+
+    <div class="card">
+      <h2 id="cbDayTitle">Day entries</h2>
+      <p class="hint">Every line written in the book for this day. Only lines marked <strong>Expense</strong> are costs &mdash; salary payments, advances, supplier payments, transfers and bank withdrawals are money moving, not new expenses.</p>
+      <div id="cbDayTable"></div>
+    </div>
+
+    <div class="dash-grid">
+      <div class="card">
+        <h2>Add a line</h2>
+        <form class="entry-form" id="cbForm">
+          <div class="field"><label for="cbDir">In / out</label><select id="cbDir"><option value="out">Paid out</option><option value="in">Received</option></select></div>
+          <div class="field"><label for="cbType">Type</label><select id="cbType"></select></div>
+          <div class="field" style="grid-column: span 2;"><label for="cbParty">Paid to / received from</label><input id="cbParty" required placeholder="e.g. Diesel, Musab, Vasanth Cashew"></div>
+          <div class="field"><label for="cbAmount">Amount (&#8377;)</label><input type="number" step="any" min="0" id="cbAmount" required></div>
+          <div class="field cb-exp-only"><label for="cbCategory">Expense category</label><select id="cbCategory"></select></div>
+          <div class="field cb-sal-only"><label for="cbSalFactory">For factory</label><select id="cbSalFactory"><option>Orathur</option><option>Vikravandi</option></select></div>
+          <div class="field cb-sal-only"><label for="cbSalMonth">Salary month</label><input type="month" id="cbSalMonth"></div>
+          <div class="field" style="grid-column: 1 / -1;"><label for="cbNotes">Notes</label><input id="cbNotes" placeholder="optional"></div>
+          <div class="field"><button type="submit" class="btn btn-primary">Add line</button></div>
+        </form>
+        <p class="hint" style="margin-top:8px;">An <strong>Expense</strong> line is also added to the Expenses tab automatically (same date, factory and amount), so you only enter it once.</p>
+      </div>
+      <div class="card">
+        <h2>Check against the book</h2>
+        <p class="hint">Type the balance written in the book. The difference shows straight away.</p>
+        <form class="entry-form" id="cbDayForm">
+          <div class="field"><label for="cbOpenW">Opening in book (&#8377;)</label><input type="number" step="any" id="cbOpenW" placeholder="only needed on the first day"></div>
+          <div class="field"><label for="cbCloseW">Closing / balance in book (&#8377;)</label><input type="number" step="any" id="cbCloseW"></div>
+          <div class="field"><label for="cbPage">Page no.</label><input id="cbPage" placeholder="e.g. 273-275"></div>
+          <div class="field"><button type="submit" class="btn btn-primary">Save</button></div>
+        </form>
+        <div id="cbChecks" style="margin-top:12px;"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Salary statement</h2>
+      <p class="hint">Salary due comes from the salary sheets in the Expenses tab. Cash paid and advances come from both cash books. <strong>Balance</strong> is what is still payable; a minus means more was paid or advanced than the sheet entered so far.</p>
+      <div id="cbSalary"></div>
+    </div>
+
+    <div class="card">
+      <h2>Day-by-day balance</h2>
+      <div id="cbDays"></div>
     </div>
   </section>
 
@@ -1329,7 +1400,7 @@
   var expenseDocs = [];
   var editingExpenseId = null;
   var EXPENSE_BRANCHES = ["Vikravandi", "Orathur"];
-  var EXPENSE_CATEGORIES = ["Salaries & Wages", "Maintenance & Repairs", "EB Bills", "Fuel & Transport", "Rent", "Office & Admin", "Miscellaneous"];
+  var EXPENSE_CATEGORIES = ["Salaries & Wages", "Maintenance & Repairs", "EB Bills", "Fuel & Transport", "Freight & Loading", "Food & Staff Welfare", "Rent", "Office & Admin", "Miscellaneous"];
   var productionDocsRaw = [];
   var bbEntriesRaw = [], bbEntries = [], bbEntriesFY = [], bbProducts = {}, bbMaterials = [], bbLoaded = false;
   var opDocsRaw = [];
@@ -2200,8 +2271,29 @@
     }
     return "";
   }
+  // Fingerprint used to skip import rows that are already in the tracker
+  // (same date, amount and party) — so a payment entered by hand, or an
+  // Excel file imported twice, never creates a second copy.
+  function importDupKey(coll, d) {
+    var n = function (x) { return String(x || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 6); };
+    var a = Math.round(Number(d.amount != null ? d.amount : d.value) || 0);
+    if (coll === "payments") return d.date + "|" + a + "|" + n(d.supplier);
+    if (coll === "purchases") return d.date + "|" + a + "|" + n(d.supplier) + "|" + n(d.product);
+    if (coll === "sales") return d.date + "|" + a + "|" + n(d.dealer) + "|" + String(d.invoiceNo || "");
+    if (coll === "receipts") return d.date + "|" + a + "|" + n(d.dealer);
+    return null;
+  }
   function bulkAdd(collectionName, docs, statusEl) {
+    var shortName = collectionName.replace(/^tracker_/, "");
+    var existing = shortName === "payments" ? paymentDocsRaw : shortName === "purchases" ? purchaseDocsRaw : shortName === "sales" ? salesDocsRaw : shortName === "receipts" ? receiptDocsNew.concat(receiptDocsOld) : null;
+    var skipped = 0;
+    if (existing) {
+      var seen = {};
+      existing.forEach(function (d) { var k = importDupKey(shortName, d); if (k) seen[k] = true; });
+      docs = docs.filter(function (d) { var k = importDupKey(shortName, d); if (k && seen[k]) { skipped++; return false; } return true; });
+    }
     var total = docs.length, done = 0, failed = 0, idx = 0;
+    var skippedNote = skipped ? " " + skipped + " row" + (skipped === 1 ? " was" : "s were") + " skipped because " + (skipped === 1 ? "it is" : "they are") + " already in the tracker (same date, amount and party)." : "";
     statusEl.innerHTML = '<div class="banner">Importing 0 / ' + total + '&hellip;</div>';
     function next() {
       if (idx >= docs.length) return Promise.resolve();
@@ -2219,7 +2311,7 @@
     var workers = [];
     for (var w = 0; w < Math.min(6, total || 1); w++) workers.push(next());
     return Promise.all(workers).then(function () {
-      statusEl.innerHTML = '<div class="banner' + (failed ? " bad" : "") + '">Imported ' + (total - failed) + " of " + total + " rows" + (failed ? (", " + failed + " failed") : "") + ".</div>";
+      statusEl.innerHTML = '<div class="banner' + (failed ? " bad" : "") + '">Imported ' + (total - failed) + " of " + total + " rows" + (failed ? (", " + failed + " failed") : "") + "." + skippedNote + "</div>";
     });
   }
 
@@ -4790,6 +4882,236 @@
     this.textContent = "Close Batch Book";
   });
 
+  // ---------- Cash Book (daily cash books: Orathur main + Vikravandi VKD) ----------
+  var cashDocs = [], cashLoaded = false;
+  var CASH_TYPES = {
+    out: [["expense", "Expense"], ["salary_payment", "Salary payment"], ["salary_advance", "Salary advance"], ["supplier_payment", "Supplier payment"], ["finance", "Finance / chit / loan"], ["transfer_out", "Transfer to other book"], ["other_out", "Other payment"]],
+    "in": [["bank_withdrawal", "Bank → cash"], ["receipt", "Receipt from dealer / party"], ["transfer_in", "Transfer from other book"], ["other_in", "Other receipt"]]
+  };
+  function cashTypeLabel(t) { var all = CASH_TYPES.out.concat(CASH_TYPES["in"]); for (var i = 0; i < all.length; i++) if (all[i][0] === t) return all[i][1]; return t; }
+  function cbLines(book, date) { return cashDocs.filter(function (d) { return d.kind === "line" && d.book === book && (!date || d.date === date); }); }
+  function cbDayDoc(book, date) { return cashDocs.find(function (d) { return d.kind === "day" && d.book === book && d.date === date; }) || null; }
+  function cbDays(book) {
+    var set = {};
+    cashDocs.forEach(function (d) { if (d.book === book && d.date) set[d.date] = true; });
+    return Object.keys(set).sort();
+  }
+  // Running balance for every day of a book: the first day starts from the
+  // opening written in the book; every later day starts from the previous
+  // day's worked-out closing.
+  function cbLedger(book) {
+    var days = cbDays(book), out = [], bal = null;
+    days.forEach(function (date) {
+      var dd = cbDayDoc(book, date);
+      var opening = bal == null ? (dd && dd.openingWritten != null ? Number(dd.openingWritten) : 0) : bal;
+      var inn = 0, outt = 0;
+      cbLines(book, date).forEach(function (l) { if (l.dir === "in") inn += Number(l.amount) || 0; else outt += Number(l.amount) || 0; });
+      var closing = opening + inn - outt;
+      var written = dd && dd.closingWritten != null && dd.closingWritten !== "" ? Number(dd.closingWritten) : null;
+      var openW = dd && dd.openingWritten != null && dd.openingWritten !== "" ? Number(dd.openingWritten) : null;
+      out.push({ date: date, opening: opening, inn: inn, out: outt, closing: closing, written: written, openingWritten: openW, page: dd && dd.page });
+      bal = closing;
+    });
+    return out;
+  }
+  function cbNameKey(x) { return String(x || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 5); }
+  function cbDaysBetween(a, b) { return Math.abs((new Date(a) - new Date(b)) / 86400000); }
+  function cbLineStatus(l) {
+    if (l.type === "expense") {
+      var ex = l.expenseId && expenseDocsRaw.find(function (e) { return e.id === l.expenseId; });
+      return ex ? '<span class="cb-ok">✓ In Expenses</span> <span class="cb-tag">' + esc(ex.category || "") + '</span>' : '<span class="cb-bad">Not in Expenses</span>';
+    }
+    if (l.type === "supplier_payment") {
+      var key = cbNameKey(l.party), amt = Math.round(Number(l.amount) || 0);
+      var hit = paymentDocsRaw.find(function (p) { return Math.round(Number(p.amount) || 0) === amt && cbDaysBetween(p.date, l.date) <= 3 && (cbNameKey(p.supplier).indexOf(key) === 0 || key.indexOf(cbNameKey(p.supplier)) === 0); });
+      return hit ? '<span class="cb-ok">✓ Found in Payments</span>' : '<span class="cb-warn">Not in Payments yet</span>';
+    }
+    if (l.type === "salary_payment" || l.type === "salary_advance") return '<span class="cb-tag">' + esc(l.forFactory || l.book) + ' · ' + esc(l.salaryMonth ? monthLabel(l.salaryMonth) : "month not set") + '</span>';
+    if (l.type === "transfer_out" || l.type === "transfer_in") {
+      var other = l.book === "Orathur" ? "Vikravandi" : "Orathur";
+      var mine = 0, theirs = 0;
+      cbLines(l.book, l.date).forEach(function (x) { if (x.type === l.type) mine += Number(x.amount) || 0; });
+      cbLines(other, l.date).forEach(function (x) { if (x.type === (l.type === "transfer_out" ? "transfer_in" : "transfer_out")) theirs += Number(x.amount) || 0; });
+      return Math.round(mine) === Math.round(theirs) ? '<span class="cb-ok">✓ Matches ' + esc(other) + ' book</span>' : '<span class="cb-bad">' + esc(other) + ' book shows ' + inr(theirs) + '</span>';
+    }
+    if (l.type === "bank_withdrawal") return '<span class="cb-tag">From bank</span>';
+    return "";
+  }
+  function cbSelBook() { return document.getElementById("cbBook").value; }
+  function cbSelDate() {
+    var el = document.getElementById("cbDate");
+    if (!el.value) { var days = cbDays(cbSelBook()); el.value = days.length ? days[days.length - 1] : todayISO(); }
+    return el.value;
+  }
+  function refreshCbTypes() {
+    var dir = document.getElementById("cbDir").value, sel = document.getElementById("cbType"), cur = sel.value;
+    sel.innerHTML = CASH_TYPES[dir].map(function (t) { return '<option value="' + t[0] + '">' + t[1] + '</option>'; }).join("");
+    if (CASH_TYPES[dir].some(function (t) { return t[0] === cur; })) sel.value = cur;
+    var catSel = document.getElementById("cbCategory");
+    if (!catSel.options.length || catSel.dataset.n !== String(expenseDocsRaw.length)) {
+      var cats = EXPENSE_CATEGORIES.slice();
+      expenseDocsRaw.forEach(function (d) { if (d.category && cats.indexOf(d.category) < 0) cats.push(d.category); });
+      var keep = catSel.value;
+      catSel.innerHTML = cats.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join("");
+      if (keep) catSel.value = keep;
+      catSel.dataset.n = String(expenseDocsRaw.length);
+    }
+    var t = sel.value;
+    document.querySelectorAll("#cbForm .cb-exp-only").forEach(function (e) { e.style.display = t === "expense" ? "" : "none"; });
+    document.querySelectorAll("#cbForm .cb-sal-only").forEach(function (e) { e.style.display = (t === "salary_payment" || t === "salary_advance") ? "" : "none"; });
+  }
+
+  function renderCashBook() {
+    if (!document.getElementById("cbKpis")) return;
+    var book = cbSelBook(), date = cbSelDate();
+    var w = document.getElementById("cbDbWarning");
+    var led = cbLedger(book), row = led.find(function (r) { return r.date === date; });
+    var dd = cbDayDoc(book, date);
+    if (!row) {
+      var prev = led.filter(function (r) { return r.date < date; }).pop();
+      var op = prev ? prev.closing : 0;
+      row = { date: date, opening: op, inn: 0, out: 0, closing: op, written: null };
+    }
+    var diff = row.written == null ? null : row.closing - row.written;
+    document.getElementById("cbKpis").innerHTML =
+      '<div class="kpi"><div class="label">Opening</div><div class="value">' + inr(row.opening) + '</div></div>' +
+      '<div class="kpi"><div class="label">Received</div><div class="value good">' + inr(row.inn) + '</div></div>' +
+      '<div class="kpi"><div class="label">Paid out</div><div class="value bad">' + inr(row.out) + '</div></div>' +
+      '<div class="kpi"><div class="label">Closing (worked out)</div><div class="value">' + inr(row.closing) + '</div></div>' +
+      '<div class="kpi"><div class="label">Closing in book</div><div class="value">' + (row.written == null ? "&ndash;" : inr(row.written)) + '</div>' +
+        (diff == null ? '<div class="officer-meta" style="margin-top:2px;">not entered yet</div>' : '<div class="officer-meta ' + (Math.abs(diff) < 1 ? "cb-ok" : "cb-bad") + '" style="margin-top:2px;">' + (Math.abs(diff) < 1 ? "✓ matches" : "differs by " + inr(diff)) + '</div>') + '</div>';
+    document.getElementById("cbDayTitle").textContent = (book === "Orathur" ? "Orathur main book" : "Vikravandi VKD book") + " — " + fmtDate(date) + (dd && dd.page ? " (page " + dd.page + ")" : "");
+
+    var lines = cbLines(book, date).sort(function (a, b) { return (a.dir === b.dir ? 0 : a.dir === "in" ? -1 : 1) || String(a.seq || a.id).localeCompare(String(b.seq || b.id)); });
+    var html;
+    if (!lines.length) html = '<div class="empty-state">Nothing entered for this day yet.</div>';
+    else {
+      html = '<div class="table-wrap"><table><thead><tr><th>Type</th><th>Paid to / received from</th><th class="num">Received</th><th class="num">Paid out</th><th>Check</th><th></th></tr></thead><tbody>';
+      lines.forEach(function (l) {
+        html += '<tr><td><span class="cb-tag">' + esc(cashTypeLabel(l.type)) + '</span></td><td>' + esc(l.party || "") + (l.notes ? '<div class="muted">' + esc(l.notes) + '</div>' : '') + '</td>' +
+          '<td class="num">' + (l.dir === "in" ? inr(l.amount) : "") + '</td><td class="num">' + (l.dir === "out" ? inr(l.amount) : "") + '</td><td>' + cbLineStatus(l) + '</td>' +
+          '<td><button class="btn-danger-ghost" data-cb-del="' + esc(l.id) + '">Delete</button></td></tr>';
+      });
+      html += '<tr style="font-weight:700;border-top:2px solid var(--border);"><td colspan="2">Total</td><td class="num">' + inr(row.inn) + '</td><td class="num">' + inr(row.out) + '</td><td colspan="2"></td></tr></tbody></table></div>';
+    }
+    var tbl = document.getElementById("cbDayTable");
+    tbl.innerHTML = html;
+    tbl.querySelectorAll("[data-cb-del]").forEach(function (b) { b.addEventListener("click", function () { cbDeleteLine(b.getAttribute("data-cb-del")); }); });
+
+    document.getElementById("cbOpenW").value = dd && dd.openingWritten != null ? dd.openingWritten : "";
+    document.getElementById("cbCloseW").value = dd && dd.closingWritten != null ? dd.closingWritten : "";
+    document.getElementById("cbPage").value = dd && dd.page ? dd.page : "";
+
+    // Checks for this day
+    var checks = [];
+    if (row.written != null) checks.push(Math.abs(diff) < 1 ? '<span class="cb-ok">✓ Balance matches the book (' + inr(row.written) + ')</span>' : '<span class="cb-bad">Balance differs from the book by ' + inr(diff) + '</span>');
+    if (row.openingWritten != null && Math.abs(row.openingWritten - row.opening) >= 1) checks.push('<span class="cb-bad">Opening in book ' + inr(row.openingWritten) + ' but carried forward ' + inr(row.opening) + '</span>');
+    var unPaid = lines.filter(function (l) { return l.type === "supplier_payment" && cbLineStatus(l).indexOf("Not in") >= 0; });
+    if (unPaid.length) checks.push('<span class="cb-warn">' + unPaid.length + ' supplier payment' + (unPaid.length === 1 ? " is" : "s are") + ' not in the Payments tab yet</span>');
+    var badT = lines.filter(function (l) { return /^transfer_/.test(l.type) && cbLineStatus(l).indexOf("cb-bad") >= 0; });
+    if (badT.length) checks.push('<span class="cb-bad">Transfer doesn’t match the other book</span>');
+    document.getElementById("cbChecks").innerHTML = checks.length ? checks.map(function (c) { return '<div style="margin-bottom:4px;">' + c + '</div>'; }).join("") : '<span class="muted">Enter the closing balance from the book to check it.</span>';
+
+    renderCbDays(); renderCbSalary(); refreshCbTypes();
+    if (w) w.style.display = "none";
+  }
+
+  function renderCbDays() {
+    var wrap = document.getElementById("cbDays"); if (!wrap) return;
+    var book = cbSelBook(), led = cbLedger(book).slice().reverse();
+    if (!led.length) { wrap.innerHTML = '<div class="empty-state">No days entered yet.</div>'; return; }
+    var html = '<div class="table-wrap"><table><thead><tr><th>Date</th><th class="num">Opening</th><th class="num">Received</th><th class="num">Paid out</th><th class="num">Closing</th><th class="num">In book</th><th>Check</th></tr></thead><tbody>';
+    led.forEach(function (r) {
+      var d = r.written == null ? null : r.closing - r.written;
+      html += '<tr data-cb-goto="' + r.date + '" style="cursor:pointer;"><td>' + esc(fmtDate(r.date)) + '</td><td class="num">' + inr(r.opening) + '</td><td class="num">' + inr(r.inn) + '</td><td class="num">' + inr(r.out) + '</td><td class="num" style="font-weight:700;">' + inr(r.closing) + '</td><td class="num">' + (r.written == null ? "&ndash;" : inr(r.written)) + '</td><td>' +
+        (d == null ? '<span class="muted">not checked</span>' : Math.abs(d) < 1 ? '<span class="cb-ok">✓</span>' : '<span class="cb-bad">off by ' + inr(d) + '</span>') + '</td></tr>';
+    });
+    wrap.innerHTML = html + '</tbody></table></div>';
+    wrap.querySelectorAll("[data-cb-goto]").forEach(function (tr) { tr.addEventListener("click", function () { document.getElementById("cbDate").value = tr.getAttribute("data-cb-goto"); renderCashBook(); window.scrollTo({ top: 0, behavior: "smooth" }); }); });
+  }
+
+  function renderCbSalary() {
+    var wrap = document.getElementById("cbSalary"); if (!wrap) return;
+    var R = {};
+    function row(f, m) { var k = f + "|" + m; return R[k] = R[k] || { f: f, m: m, due: 0, paid: 0, adv: 0 }; }
+    expenseDocsRaw.forEach(function (d) { if (d.category === "Salaries & Wages" && d.branch) row(d.branch, String(d.date || "").slice(0, 7)).due += Number(d.amount) || 0; });
+    cashDocs.forEach(function (l) {
+      if (l.kind !== "line" || !l.salaryMonth) return;
+      if (l.type === "salary_payment") row(l.forFactory || l.book, l.salaryMonth).paid += Number(l.amount) || 0;
+      if (l.type === "salary_advance") row(l.forFactory || l.book, l.salaryMonth).adv += Number(l.amount) || 0;
+    });
+    var rows = Object.keys(R).map(function (k) { return R[k]; }).sort(function (a, b) { return b.m.localeCompare(a.m) || a.f.localeCompare(b.f); });
+    if (!rows.length) { wrap.innerHTML = '<div class="empty-state">No salaries yet.</div>'; return; }
+    var html = '<div class="table-wrap"><table><thead><tr><th>Month</th><th>Factory</th><th class="num">Salary due (sheets)</th><th class="num">Advances</th><th class="num">Paid (cash books)</th><th class="num">Balance payable</th></tr></thead><tbody>';
+    rows.forEach(function (r) {
+      var bal = r.due - r.adv - r.paid;
+      html += '<tr><td>' + esc(monthLabel(r.m)) + '</td><td>' + esc(r.f) + '</td><td class="num">' + (r.due ? inr(r.due) : '<span class="muted">sheet not entered</span>') + '</td><td class="num">' + (r.adv ? inr(r.adv) : "&ndash;") + '</td><td class="num">' + (r.paid ? inr(r.paid) : "&ndash;") + '</td><td class="num" style="font-weight:700;"><span class="' + (bal < 0 ? "cb-bad" : "") + '">' + inr(bal) + '</span></td></tr>';
+    });
+    wrap.innerHTML = html + '</tbody></table></div><p class="muted" style="font-size:.78rem;margin-top:6px;">Salary paid by bank isn’t in the cash books, so a month paid by bank still shows its full balance until those payments are added.</p>';
+  }
+
+  function cbShiftDay(delta) {
+    var days = cbDays(cbSelBook()), cur = cbSelDate();
+    if (!days.length) return;
+    var i = days.indexOf(cur), target;
+    if (i >= 0) target = days[Math.max(0, Math.min(days.length - 1, i + delta))];
+    else if (delta < 0) target = days.filter(function (d) { return d < cur; }).pop() || days[0];
+    else target = days.filter(function (d) { return d > cur; })[0] || days[days.length - 1];
+    document.getElementById("cbDate").value = target;
+    renderCashBook();
+  }
+
+  function cbDeleteLine(id) {
+    var l = cashDocs.find(function (d) { return d.id === id; }); if (!l) return;
+    var linked = l.expenseId && expenseDocsRaw.find(function (e) { return e.id === l.expenseId; });
+    appConfirm("Delete this line" + (linked ? " and its matching entry in Expenses" : "") + "? This can't be undone.").then(function (ok) {
+      if (!ok) return;
+      var b = db.batch();
+      b.delete(db.collection("tracker_cashbook").doc(id));
+      if (linked) b.delete(db.collection("tracker_expenses").doc(l.expenseId));
+      b.commit().catch(function (e) { appAlert("Could not delete: " + e.message); });
+    });
+  }
+
+  document.getElementById("cbDir").addEventListener("change", refreshCbTypes);
+  document.getElementById("cbType").addEventListener("change", refreshCbTypes);
+  document.getElementById("cbBook").addEventListener("change", function () { document.getElementById("cbDate").value = ""; document.getElementById("cbSalFactory").value = cbSelBook(); renderCashBook(); });
+  document.getElementById("cbDate").addEventListener("change", renderCashBook);
+  document.getElementById("cbPrev").addEventListener("click", function () { cbShiftDay(-1); });
+  document.getElementById("cbNext").addEventListener("click", function () { cbShiftDay(1); });
+  document.getElementById("cbLatest").addEventListener("click", function () { var d = cbDays(cbSelBook()); if (d.length) { document.getElementById("cbDate").value = d[d.length - 1]; renderCashBook(); } });
+  document.getElementById("cbForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var book = cbSelBook(), date = cbSelDate(), dir = document.getElementById("cbDir").value, type = document.getElementById("cbType").value;
+    var party = document.getElementById("cbParty").value.trim(), amount = Number(document.getElementById("cbAmount").value) || 0;
+    var notes = document.getElementById("cbNotes").value.trim();
+    if (!party || amount <= 0) return;
+    var now = new Date().toISOString();
+    var line = { kind: "line", book: book, date: date, dir: dir, type: type, party: party, amount: amount, notes: notes, seq: now, createdAt: now };
+    if (type === "salary_payment" || type === "salary_advance") {
+      line.forFactory = document.getElementById("cbSalFactory").value;
+      line.salaryMonth = document.getElementById("cbSalMonth").value || date.slice(0, 7);
+    }
+    var b = db.batch(), ref = db.collection("tracker_cashbook").doc();
+    if (type === "expense") {
+      var exRef = db.collection("tracker_expenses").doc();
+      line.expenseId = exRef.id;
+      b.set(exRef, { date: date, branch: book, category: document.getElementById("cbCategory").value || "Miscellaneous", paidTo: party, amount: amount, notes: notes, mode: "Cash", company: "", reference: "", units: 0, source: "Cash book (" + book + ")", createdAt: now });
+    }
+    b.set(ref, line);
+    b.commit().then(function () {
+      document.getElementById("cbParty").value = ""; document.getElementById("cbAmount").value = ""; document.getElementById("cbNotes").value = "";
+      document.getElementById("cbParty").focus();
+    }).catch(function (err) { console.error(err); appAlert("Could not save: " + err.message); });
+  });
+  document.getElementById("cbDayForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var book = cbSelBook(), date = cbSelDate();
+    var ow = document.getElementById("cbOpenW").value, cw = document.getElementById("cbCloseW").value, pg = document.getElementById("cbPage").value.trim();
+    db.collection("tracker_cashbook").doc("day_" + book + "_" + date).set({ kind: "day", book: book, date: date, openingWritten: ow === "" ? null : Number(ow), closingWritten: cw === "" ? null : Number(cw), page: pg, updatedAt: new Date().toISOString() })
+      .catch(function (err) { console.error(err); appAlert("Could not save: " + err.message); });
+  });
+
   function renderOverallPerformance() {
     var wrap = document.getElementById("overallPerformanceWrap");
     if (!wrap) return;
@@ -5261,6 +5583,7 @@
     bbEntries = bbEntriesFY.filter(function (d) { return !bbF || d.factory === bbF; });
     renderExpensesAll();
     renderBatchBookAll();
+    if (cashLoaded) renderCashBook();
     renderDashboard();
     renderDealerLedger();
     renderOfficerLedger();
@@ -7425,6 +7748,15 @@
       bbMaterials = (snap.exists && snap.data().items) || [];
       renderBbMaterials();
     }, function (e) { console.error("batch book materials sub error", e); });
+
+    db.collection("tracker_cashbook").limit(5000).onSnapshot(function (snap) {
+      cashDocs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      cashLoaded = true;
+      renderCashBook();
+    }, function (e) {
+      console.error("cashbook sub error", e);
+      var w = document.getElementById("cbDbWarning"); if (w) w.style.display = "block";
+    });
 
     db.collection("tracker_expenses").orderBy("date", "desc").limit(5000).onSnapshot(function (snap) {
       expenseDocsRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
