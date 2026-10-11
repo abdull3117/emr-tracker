@@ -1543,7 +1543,9 @@
   function loadBbApp(force) {
     var w = document.getElementById("bbAppWrap"); if (!w) return;
     if (w.firstChild && !force) return;
-    w.innerHTML = '<iframe class="bbapp-frame" src="' + BB_APP_URL + (force ? "?r=" + Date.now() : "") + '" title="Batch Book"></iframe>';
+    // Always ask for the newest Batch Book page, so the tracker never shows
+    // an older copy from the browser's cache.
+    w.innerHTML = '<iframe class="bbapp-frame" src="' + BB_APP_URL + "?r=" + Date.now() + '" title="Batch Book"></iframe>';
   }
   document.getElementById("bbAppReload").addEventListener("click", function () { loadBbApp(true); });
   if (/^#batch-?book$/i.test(location.hash)) { var bbBtn = document.querySelector('.tab-btn[data-tab="bbapp"]'); if (bbBtn) bbBtn.click(); }
@@ -4965,7 +4967,7 @@
   document.getElementById("bbOpenEmbed").addEventListener("click", function () {
     var w = document.getElementById("bbEmbedWrap");
     if (w.firstChild) { w.innerHTML = ""; this.textContent = "Open Batch Book here"; return; }
-    w.innerHTML = '<iframe class="bb-frame" src="https://abdull3117.github.io/batch-book/" title="Batch Book"></iframe>';
+    w.innerHTML = '<iframe class="bb-frame" src="https://abdull3117.github.io/batch-book/?r=' + Date.now() + '" title="Batch Book"></iframe>';
     this.textContent = "Close Batch Book";
   });
 
