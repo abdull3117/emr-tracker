@@ -194,6 +194,10 @@
   nav.tabs button[data-tab="expenses"].active { color: var(--rose); border-bottom-color: var(--rose); }
   nav.tabs button[data-tab="production"].active { color: var(--teal); border-bottom-color: var(--teal); }
   nav.tabs button[data-tab="batchbook"].active { color: var(--teal); border-bottom-color: var(--teal); }
+  nav.tabs button[data-tab="bbapp"].active { color: var(--teal); border-bottom-color: var(--teal); }
+  .bbapp-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .bbapp-bar .muted { font-size: .8rem; }
+  .bbapp-frame { display: block; width: 100%; height: calc(100vh - 150px); min-height: 560px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
   nav.tabs button[data-tab="cashbook"].active { color: var(--indigo); border-bottom-color: var(--indigo); }
   nav.tabs button[data-tab="attendance"].active { color: var(--teal); border-bottom-color: var(--teal); }
   #panel-attendance .dash-grid > .card, #panel-cashbook .dash-grid > .card { min-width: 0; }
@@ -618,6 +622,7 @@
     <button class="tab-btn" data-tab="attendance">Attendance</button>
     <button class="tab-btn" data-tab="production">Production</button>
     <button class="tab-btn" data-tab="batchbook">Production Expenses</button>
+    <button class="tab-btn" data-tab="bbapp">Batch Book</button>
     <button class="tab-btn" data-tab="projections">Officer Performance</button>
     <button class="tab-btn" data-tab="audit">Balance Reconciliation</button>
     <button class="tab-btn" data-tab="ledger">Ledger</button>
@@ -1019,6 +1024,16 @@
       <h2>Day-by-day balance</h2>
       <div id="cbDays"></div>
     </div>
+  </section>
+
+  <!-- BATCH BOOK (the complete Batch Book app, inside the tracker) -->
+  <section class="panel" id="panel-bbapp">
+    <div class="bbapp-bar">
+      <button type="button" class="btn btn-ghost" id="bbAppReload">Reload</button>
+      <a class="btn btn-ghost" href="https://abdull3117.github.io/batch-book/" target="_blank" rel="noopener">Open in new window</a>
+      <span class="muted">The full Batch Book — same login, same data. Anything saved here shows in Batch Book and in Production Expenses.</span>
+    </div>
+    <div id="bbAppWrap"></div>
   </section>
 
   <!-- ATTENDANCE -->
@@ -1519,8 +1534,19 @@
       document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
       btn.classList.add("active");
       document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+      if (btn.dataset.tab === "bbapp") loadBbApp();
     });
   });
+  // The Batch Book tab loads the app only when first opened, so the
+  // tracker itself stays quick to open.
+  var BB_APP_URL = "https://abdull3117.github.io/batch-book/";
+  function loadBbApp(force) {
+    var w = document.getElementById("bbAppWrap"); if (!w) return;
+    if (w.firstChild && !force) return;
+    w.innerHTML = '<iframe class="bbapp-frame" src="' + BB_APP_URL + (force ? "?r=" + Date.now() : "") + '" title="Batch Book"></iframe>';
+  }
+  document.getElementById("bbAppReload").addEventListener("click", function () { loadBbApp(true); });
+  if (/^#batch-?book$/i.test(location.hash)) { var bbBtn = document.querySelector('.tab-btn[data-tab="bbapp"]'); if (bbBtn) bbBtn.click(); }
   document.querySelectorAll("[data-goto-tab]").forEach(function (el) {
     el.addEventListener("click", function () {
       var target = document.querySelector('.tab-btn[data-tab="' + el.getAttribute("data-goto-tab") + '"]');
