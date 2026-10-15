@@ -601,6 +601,7 @@
     </div>
   </div>
 
+  <div id="quotaWarning" class="banner bad" style="display:none;">The free daily database limit has been used up, so new entries can't be saved or loaded right now. It resets every day at about 12:30&ndash;1:30 pm India time. Anything you type now is kept on this device and saved automatically once it resets &mdash; don't clear the browser or re-enter it.</div>
   <div id="dbWarning" class="banner bad" style="display:none;">
     This view cannot reach the shared data store right now, so new entries will not be saved. Please reopen the page, or notify Claude if the issue persists.
   </div>
@@ -917,6 +918,22 @@
         <div class="field"><button type="button" class="btn btn-ghost" id="expenseCancelEdit" style="display:none;">Cancel edit</button></div>
       </form>
       <datalist id="expensePayeeList"></datalist>
+    </div>
+
+    <div class="card">
+      <h2>Daily expenses</h2>
+      <p class="hint">Everything spent on one day, and a day-by-day total for that month. Pick a day, or tap a row in the month table.</p>
+      <div class="filter-row">
+        <button type="button" class="btn-ghost" id="expenseDayPrev" aria-label="Previous day">&lsaquo; Prev</button>
+        <input type="date" id="expenseDayPick">
+        <button type="button" class="btn-ghost" id="expenseDayNext" aria-label="Next day">Next &rsaquo;</button>
+        <button type="button" class="btn-ghost" id="expenseDayToday">Today</button>
+        <select id="expenseDayBranch"><option value="">Both branches</option><option>Vikravandi</option><option>Orathur</option></select>
+      </div>
+      <div id="expenseDaySummary"></div>
+      <div id="expenseDayWrap"></div>
+      <h3 style="margin:18px 0 6px;font-size:.95rem;" id="expenseMonthTitle">Day by day</h3>
+      <div id="expenseMonthWrap"></div>
     </div>
 
     <div class="card">
@@ -1596,6 +1613,13 @@
     var parts = d.split("-");
     if (parts.length !== 3) return d;
     return parts[2] + "-" + parts[1] + "-" + parts[0];
+  }
+  // Firestore answers "resource-exhausted" once the project's free daily
+  // read/write quota is used up; show one clear banner instead of the
+  // per-section "database not set up" warnings.
+  function noteDbError(e) {
+    if (!e || e.code !== "resource-exhausted") return;
+    var w = document.getElementById("quotaWarning"); if (w) w.style.display = "block";
   }
   function todayISO() {
     var d = new Date();
@@ -5271,7 +5295,7 @@
     db.doc("tracker_syncMeta/" + atMonthDocId(m)).onSnapshot(function (snap) {
       staffAtt[m] = (snap.exists && snap.data().days) || {};
       renderAttendanceTab();
-    }, function (e) { console.error("attendance sub error", e); });
+    }, function (e) { noteDbError(e); console.error("attendance sub error", e); });
   }
   function atMark(date, pid) { var m = date.slice(0, 7); return ((staffAtt[m] || {})[date] || {})[pid] || ""; }
   function atSetMark(date, pid, val) {
@@ -5539,8 +5563,81 @@
     wrap.innerHTML = html;
   }
 
+  // Daily view works off every expense (not just the selected FY) so any
+  // date can be looked up.
+  function shiftISODate(iso, days) {
+    var p = String(iso || todayISO()).split("-");
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + days);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function renderExpenseDaily() {
+    var pick = document.getElementById("expenseDayPick");
+    var wrap = document.getElementById("expenseDayWrap");
+    if (!pick || !wrap) return;
+    if (!pick.value) pick.value = todayISO();
+    var day = pick.value, month = day.slice(0, 7);
+    var branch = document.getElementById("expenseDayBranch").value;
+    var rows = expenseDocsRaw.filter(function (d) { return (!branch || d.branch === branch) && String(d.date || "").slice(0, 7) === month; });
+    var dayRows = rows.filter(function (d) { return d.date === day; })
+      .sort(function (a, b) { return (a.branch || "").localeCompare(b.branch || "") || (a.category || "").localeCompare(b.category || ""); });
+
+    var total = 0, byBranch = {};
+    dayRows.forEach(function (d) { var a = Number(d.amount) || 0; total += a; var b = d.branch || "No branch"; byBranch[b] = (byBranch[b] || 0) + a; });
+    var sumEl = document.getElementById("expenseDaySummary");
+    sumEl.innerHTML = '<div class="filter-summary-row"><span class="tag indigo">' + esc(fmtDate(day)) + '</span>' +
+      '<span class="tag">Total: ' + inr(total) + '</span>' +
+      Object.keys(byBranch).sort().map(function (b) { return '<span class="tag slate">' + esc(b) + ': ' + inr(byBranch[b]) + '</span>'; }).join("") +
+      '<span class="tag slate">' + dayRows.length + ' entr' + (dayRows.length === 1 ? 'y' : 'ies') + '</span></div>';
+
+    if (!dayRows.length) {
+      wrap.innerHTML = '<div class="empty-state"><strong>No expenses entered for ' + esc(fmtDate(day)) + '</strong>Use the form above to add them.</div>';
+    } else {
+      var html = '<div class="table-wrap"><table><thead><tr><th>Branch</th><th>Category</th><th>Paid to / Description</th><th>Mode</th><th class="num">Amount</th><th></th></tr></thead><tbody>';
+      dayRows.forEach(function (d) {
+        html += '<tr><td>' + (d.branch ? esc(d.branch) : '<span class="muted">&ndash;</span>') + '</td><td><span class="tag slate">' + esc(d.category || "Miscellaneous") + '</span></td>' +
+          '<td>' + esc(d.paidTo || "") + (d.notes ? '<div class="muted">' + esc(d.notes) + '</div>' : '') + '</td>' +
+          '<td>' + (d.mode ? esc(d.mode) : '&ndash;') + '</td><td class="num" style="font-weight:700;">' + inr(d.amount) + '</td>' +
+          '<td><button class="btn-ghost" style="padding:4px 8px;font-size:.76rem;" data-edit-expense="' + esc(d.id) + '">Edit</button></td></tr>';
+      });
+      html += '<tr style="font-weight:700;border-top:2px solid var(--border);"><td colspan="4">Total</td><td class="num">' + inr(total) + '</td><td></td></tr></tbody></table></div>';
+      wrap.innerHTML = html;
+      wrap.querySelectorAll("[data-edit-expense]").forEach(function (btn) {
+        btn.addEventListener("click", function () { startEditExpense(btn.getAttribute("data-edit-expense")); });
+      });
+    }
+
+    // Month table: one row per calendar day up to today (or month end).
+    var p = month.split("-"), y = Number(p[0]), m = Number(p[1]);
+    var lastDay = new Date(y, m, 0).getDate(), today = todayISO();
+    var branches = EXPENSE_BRANCHES.slice();
+    if (rows.some(function (d) { return !d.branch; })) branches.push("No branch");
+    if (branch) branches = [branch];
+    var grid = {}, cnt = {};
+    rows.forEach(function (d) { var b = d.branch || "No branch"; grid[d.date] = grid[d.date] || {}; grid[d.date][b] = (grid[d.date][b] || 0) + (Number(d.amount) || 0); cnt[d.date] = (cnt[d.date] || 0) + 1; });
+    var mHtml = '<div class="table-wrap"><table><thead><tr><th>Date</th>' + branches.map(function (b) { return '<th class="num">' + esc(b) + '</th>'; }).join("") + '<th class="num">Total</th><th class="num">Entries</th></tr></thead><tbody>';
+    var bTot = {}, grand = 0, n = 0, missing = 0;
+    for (var dnum = 1; dnum <= lastDay; dnum++) {
+      var iso = month + "-" + String(dnum).padStart(2, "0");
+      if (iso > today) break;
+      var t = 0, g = grid[iso] || {};
+      var cells = branches.map(function (b) { var v = g[b] || 0; t += v; bTot[b] = (bTot[b] || 0) + v; return '<td class="num">' + (v ? inr(v) : '&ndash;') + '</td>'; }).join("");
+      grand += t; n += cnt[iso] || 0; if (!cnt[iso]) missing++;
+      mHtml += '<tr data-expense-day="' + iso + '" style="cursor:pointer;' + (iso === day ? 'background:var(--surface-2, rgba(0,0,0,0.04));font-weight:600;' : '') + '"><td>' + esc(fmtDate(iso)) + '</td>' + cells +
+        '<td class="num" style="font-weight:700;">' + (t ? inr(t) : '<span class="muted">Not entered</span>') + '</td><td class="num">' + (cnt[iso] || "&ndash;") + '</td></tr>';
+    }
+    mHtml += '<tr style="font-weight:700;border-top:2px solid var(--border);"><td>Month total</td>' + branches.map(function (b) { return '<td class="num">' + inr(bTot[b] || 0) + '</td>'; }).join("") + '<td class="num">' + inr(grand) + '</td><td class="num">' + n + '</td></tr></tbody></table></div>';
+    var monthName = new Date(y, m - 1, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
+    document.getElementById("expenseMonthTitle").textContent = "Day by day — " + monthName + (missing ? " (" + missing + " day" + (missing === 1 ? "" : "s") + " with nothing entered)" : "");
+    var mWrap = document.getElementById("expenseMonthWrap");
+    mWrap.innerHTML = mHtml;
+    mWrap.querySelectorAll("[data-expense-day]").forEach(function (tr) {
+      tr.addEventListener("click", function () { pick.value = tr.getAttribute("data-expense-day"); renderExpenseDaily(); });
+    });
+  }
+
   function renderExpensesAll() {
     renderEbConnections();
+    renderExpenseDaily();
     refreshExpenseSelects();
     renderExpenseKpis();
     renderOverallPerformance();
@@ -5582,13 +5679,21 @@
     op.then(function () { resetExpenseForm(); })
       .catch(function (err) {
         console.error(err);
-        appAlert(err && err.code === "permission-denied"
+        noteDbError(err);
+        appAlert(err && err.code === "resource-exhausted"
+          ? "Could not save — today's free database limit is used up. It resets at about 12:30–1:30 pm India time; please enter this expense again after that."
+          : err && err.code === "permission-denied"
           ? "Could not save — the database doesn't allow the new Expenses list yet (tracker_expenses needs adding to the Firestore rules)."
           : "Could not save that expense — please try again.");
       })
       .finally(function () { btn.disabled = false; });
   });
   document.getElementById("expenseCancelEdit").addEventListener("click", resetExpenseForm);
+  document.getElementById("expenseDayPick").addEventListener("change", renderExpenseDaily);
+  document.getElementById("expenseDayBranch").addEventListener("change", renderExpenseDaily);
+  document.getElementById("expenseDayPrev").addEventListener("click", function () { var el = document.getElementById("expenseDayPick"); el.value = shiftISODate(el.value, -1); renderExpenseDaily(); });
+  document.getElementById("expenseDayNext").addEventListener("click", function () { var el = document.getElementById("expenseDayPick"); el.value = shiftISODate(el.value, 1); renderExpenseDaily(); });
+  document.getElementById("expenseDayToday").addEventListener("click", function () { document.getElementById("expenseDayPick").value = todayISO(); renderExpenseDaily(); });
   document.getElementById("expenseSearch").addEventListener("input", renderExpenseTable);
   document.getElementById("expenseCategoryFilter").addEventListener("change", renderExpenseTable);
   document.getElementById("expenseCompanyFilter").addEventListener("change", renderExpenseTable);
@@ -7954,6 +8059,13 @@
         window.__emrFirebaseApp = firebase.initializeApp(EMR_FIREBASE_CONFIG);
       }
       db = firebase.firestore();
+      // Keep a copy of the data on this device. Re-opening the app soon after
+      // only downloads what changed instead of every record again, which keeps
+      // daily reads inside Firebase's free limit; entries made while offline or
+      // over the limit are saved here and sent once the database accepts them.
+      db.enablePersistence({ synchronizeTabs: true }).catch(function (ePersist) {
+        console.warn("Offline cache not available", ePersist && ePersist.code);
+      });
     } catch (eInitDb) {
       console.error("Firebase init failed", eInitDb);
       db = null;
@@ -8003,19 +8115,19 @@
       refreshLedgerDealerSelect(); refreshLedgerOfficerSelect();
       refreshFYOptions();
       applyFYFilterAndRenderAll();
-    }, function (e) { console.error("sales sub error", e); });
+    }, function (e) { noteDbError(e); console.error("sales sub error", e); });
 
     db.collection("tracker_purchases").orderBy("date", "desc").limit(5000).onSnapshot(function (snap) {
       purchaseDocsRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       refreshSupplierSelect(); refreshPartySelect(); refreshLedgerVendorSelect();
       refreshFYOptions();
       applyFYFilterAndRenderAll();
-    }, function (e) { console.error("purchases sub error", e); });
+    }, function (e) { noteDbError(e); console.error("purchases sub error", e); });
 
     db.doc("tracker_syncMeta/ebConnections").onSnapshot(function (snap) {
       ebConnections = (snap.exists && snap.data().connections) || [];
       renderEbConnections();
-    }, function (e) { console.error("ebConnections sub error", e); });
+    }, function (e) { noteDbError(e); console.error("ebConnections sub error", e); });
 
     db.collection("entries").limit(5000).onSnapshot(function (snap) {
       bbEntriesRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
@@ -8024,26 +8136,27 @@
       applyFYFilterAndRenderAll();
     }, function (e) {
       console.error("batch book entries sub error", e);
+      noteDbError(e);
       var w = document.getElementById("bbDbWarning"); if (w) w.style.display = "block";
     });
     db.doc("settings/products").onSnapshot(function (snap) {
       bbProducts = {}; ((snap.exists && snap.data().items) || []).forEach(function (p) { bbProducts[p.id] = p.name; });
       renderBatchBookAll();
-    }, function (e) { console.error("batch book products sub error", e); });
+    }, function (e) { noteDbError(e); console.error("batch book products sub error", e); });
     db.doc("settings/materials").onSnapshot(function (snap) {
       bbMaterials = (snap.exists && snap.data().items) || [];
       renderBbMaterials();
-    }, function (e) { console.error("batch book materials sub error", e); });
+    }, function (e) { noteDbError(e); console.error("batch book materials sub error", e); });
 
     db.doc("tracker_syncMeta/staffRoster").onSnapshot(function (snap) {
       staffRoster = (snap.exists && snap.data().people) || [];
       if (snap.exists && snap.data().divisor) AT_DIVISOR = Number(snap.data().divisor) || 31;
       renderAttendanceTab();
-    }, function (e) { console.error("staff roster sub error", e); });
+    }, function (e) { noteDbError(e); console.error("staff roster sub error", e); });
     db.collection("dayLabour").limit(3000).onSnapshot(function (snap) {
       crewDocs = snap.docs.map(function (d) { var x = d.data(); if (!x.date) x.date = d.id.slice(0, 10); return x; });
       renderAtCrew();
-    }, function (e) { console.error("crew attendance sub error", e); });
+    }, function (e) { noteDbError(e); console.error("crew attendance sub error", e); });
 
     db.collection("tracker_cashbook").limit(5000).onSnapshot(function (snap) {
       cashDocs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
@@ -8051,6 +8164,7 @@
       renderCashBook();
     }, function (e) {
       console.error("cashbook sub error", e);
+      noteDbError(e);
       var w = document.getElementById("cbDbWarning"); if (w) w.style.display = "block";
     });
 
@@ -8061,7 +8175,8 @@
       applyFYFilterAndRenderAll();
     }, function (e) {
       console.error("expenses sub error", e);
-      var w = document.getElementById("expensesDbWarning"); if (w) w.style.display = "block";
+      noteDbError(e);
+      var w = document.getElementById("expensesDbWarning"); if (w && e && e.code === "permission-denied") w.style.display = "block";
     });
 
     db.collection("tracker_payments").orderBy("date", "desc").limit(5000).onSnapshot(function (snap) {
@@ -8069,60 +8184,60 @@
       refreshSupplierSelect(); refreshLedgerVendorSelect();
       refreshFYOptions();
       applyFYFilterAndRenderAll();
-    }, function (e) { console.error("payments sub error", e); });
+    }, function (e) { noteDbError(e); console.error("payments sub error", e); });
 
     db.collection("tracker_vendorOpeningBalances").limit(500).onSnapshot(function (snap) {
       vendorBalanceDocs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       renderPaymentsKpis(); renderPaymentsByVendor(); renderPaymentsByVendor("ledgerVendorSummaryWrap"); renderVendorLedger();
-    }, function (e) { console.error("vendorOpeningBalances sub error", e); });
+    }, function (e) { noteDbError(e); console.error("vendorOpeningBalances sub error", e); });
 
     db.collection("tracker_dealerOpeningBalances").limit(500).onSnapshot(function (snap) {
       dealerBalanceDocs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       renderDealerLedger(); renderDealerSummary();
-    }, function (e) { console.error("dealerOpeningBalances sub error", e); });
+    }, function (e) { noteDbError(e); console.error("dealerOpeningBalances sub error", e); });
 
     db.collection("tracker_officers").orderBy("name", "asc").limit(500).onSnapshot(function (snap) {
       officerDocs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       refreshDatalists();
       renderOfficerRoster(); populateStatementOfficerSelect();
       refreshLedgerOfficerSelect(); renderOfficerLedger();
-    }, function (e) { console.error("officers sub error", e); });
+    }, function (e) { noteDbError(e); console.error("officers sub error", e); });
 
     db.collection("tracker_auditRecords").orderBy("updatedAt", "desc").limit(500).onSnapshot(function (snap) {
       auditDocs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       refreshPartySelect();
       renderAudit();
-    }, function (e) { console.error("audit sub error", e); });
+    }, function (e) { noteDbError(e); console.error("audit sub error", e); });
 
     db.collection("tracker_officerPay").orderBy("month", "desc").limit(1000).onSnapshot(function (snap) {
       opDocsRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       refreshFYOptions();
       applyFYFilterAndRenderAll();
-    }, function (e) { console.error("officerPay sub error", e); });
+    }, function (e) { noteDbError(e); console.error("officerPay sub error", e); });
 
     db.collection("tracker_production").orderBy("date", "desc").limit(1000).onSnapshot(function (snap) {
       productionDocsRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       refreshProductionProductSelect();
       refreshFYOptions();
       applyFYFilterAndRenderAll();
-    }, function (e) { console.error("production sub error", e); });
+    }, function (e) { noteDbError(e); console.error("production sub error", e); });
 
     db.collection("tracker_dispatchSync").orderBy("date", "desc").limit(500).onSnapshot(function (snap) {
       dispatchSyncDocsRaw = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       refreshFYOptions();
       applyFYFilterAndRenderAll();
       renderProductAliasTable();
-    }, function (e) { console.error("dispatchSync sub error", e); });
+    }, function (e) { noteDbError(e); console.error("dispatchSync sub error", e); });
 
     db.collection("tracker_productAlias").orderBy("batchProduct", "asc").limit(500).onSnapshot(function (snap) {
       productAliasDocs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       renderProductAliasTable(); renderDispatchRecon();
-    }, function (e) { console.error("productAlias sub error", e); });
+    }, function (e) { noteDbError(e); console.error("productAlias sub error", e); });
 
     db.doc("tracker_syncMeta/batchBook").onSnapshot(function (snap) {
       dispatchSyncMeta = snap.exists ? snap.data() : null;
       renderDispatchRecon();
-    }, function (e) { console.error("syncMeta sub error", e); });
+    }, function (e) { noteDbError(e); console.error("syncMeta sub error", e); });
 
     // Receipts can exceed the platform's 1000-document-per-query cap, so the
     // collection is split into two live queries around RECEIPTS_SPLIT_DATE and
@@ -8138,12 +8253,12 @@
     db.collection("tracker_receipts").where("date", "<", RECEIPTS_SPLIT_DATE).orderBy("date", "desc").limit(1000).onSnapshot(function (snap) {
       receiptDocsOld = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       mergeReceiptSnapshots();
-    }, function (e) { console.error("receipts (old) sub error", e); });
+    }, function (e) { noteDbError(e); console.error("receipts (old) sub error", e); });
 
     db.collection("tracker_receipts").where("date", ">=", RECEIPTS_SPLIT_DATE).orderBy("date", "desc").limit(1000).onSnapshot(function (snap) {
       receiptDocsNew = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       mergeReceiptSnapshots();
-    }, function (e) { console.error("receipts (new) sub error", e); });
+    }, function (e) { noteDbError(e); console.error("receipts (new) sub error", e); });
   }
 
   document.getElementById("salesForm").addEventListener("submit", function (e) {
