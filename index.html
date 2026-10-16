@@ -302,6 +302,7 @@
     font-family: inherit; font-size: 0.83rem; padding: 7px 10px; border-radius: 8px;
     border: 1px solid var(--border); background: var(--surface-2); color: var(--ink);
   }
+  #salesPeriodRow [hidden] { display: none !important; }
   .filter-summary-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -2px 0 14px; }
   .filter-summary-row .tag { font-size: 0.74rem; padding: 4px 10px; }
 
@@ -692,13 +693,27 @@
         <select id="salesOfficerFilter"><option value="">All officers</option></select>
         <select id="salesProductFilter"><option value="">All products</option></select>
       </div>
+      <div class="filter-row" id="salesPeriodRow">
+        <select id="salesPeriodMode" aria-label="Period">
+          <option value="all">Period: as Financial year bar</option>
+          <option value="fy">Financial year&hellip;</option>
+          <option value="month">Month&hellip;</option>
+          <option value="date">Particular date&hellip;</option>
+          <option value="range">Date range&hellip;</option>
+        </select>
+        <select id="salesPeriodFY" aria-label="Financial year" hidden></select>
+        <input type="month" id="salesPeriodMonth" aria-label="Month" hidden>
+        <input type="date" id="salesPeriodDate" aria-label="Date" hidden>
+        <input type="date" id="salesPeriodFrom" aria-label="From date" hidden>
+        <input type="date" id="salesPeriodTo" aria-label="To date" hidden>
+      </div>
       <div id="salesFilterSummary"></div>
       <div class="filter-row no-print" style="margin-top:-4px;">
         <button type="button" class="btn btn-ghost" id="salesPrintBtn">Print</button>
         <button type="button" class="btn btn-ghost" id="salesPdfBtn">Save as PDF</button>
         <a href="https://wa.me/?text=" target="_blank" rel="noopener" class="btn btn-ghost" id="salesWhatsappBtn" style="text-decoration:none;display:inline-flex;align-items:center;">Make PDF &amp; Send to WhatsApp</a>
       </div>
-      <p class="hint no-print" style="margin:-8px 0 12px;">Print opens your computer&rsquo;s printer dialog directly for whatever is currently filtered above &mdash; if it doesn&rsquo;t respond, open this page&rsquo;s own link in a full browser tab (rather than viewing it inside the chat) and try Print there. Save as PDF always works &mdash; it downloads a PDF file you can open and print from any device. Make PDF &amp; Send to WhatsApp builds that same PDF and shares it straight through your device&rsquo;s share sheet when it supports it (pick WhatsApp there) &mdash; that only works on devices where the browser supports sharing a file this way (most phones; not most desktop browsers). Where it isn&rsquo;t supported, WhatsApp opens with a text summary as before and the PDF is downloaded alongside it, so attach that downloaded file in WhatsApp yourself. All three follow the Officer / Product / search filters above.</p>
+      <p class="hint no-print" style="margin:-8px 0 12px;">Print opens your computer&rsquo;s printer dialog directly for whatever is currently filtered above &mdash; if it doesn&rsquo;t respond, open this page&rsquo;s own link in a full browser tab (rather than viewing it inside the chat) and try Print there. Save as PDF always works &mdash; it downloads a PDF file you can open and print from any device. Make PDF &amp; Send to WhatsApp builds that same PDF and shares it straight through your device&rsquo;s share sheet when it supports it (pick WhatsApp there) &mdash; that only works on devices where the browser supports sharing a file this way (most phones; not most desktop browsers). Where it isn&rsquo;t supported, WhatsApp opens with a text summary as before and the PDF is downloaded alongside it, so attach that downloaded file in WhatsApp yourself. All three follow the Period / Officer / Product / search filters above. Period &ldquo;as Financial year bar&rdquo; uses the year chosen at the top of the page; pick Financial year, Month, Particular date or Date range to see just that period here.</p>
       <div id="salesTableWrap"></div>
       <div id="salesProductBreakdown"></div>
       <div id="salesPrintArea"></div>
@@ -3227,7 +3242,7 @@
       '<div class="kpi"><div class="label">Entries</div><div class="value">' + count + "</div></div>";
   }
 
-  function renderSalesFilterSummary(rows, officerFilter, productFilter) {
+  function renderSalesFilterSummary(rows, officerFilter, productFilter, periodLabel) {
     var el = document.getElementById("salesFilterSummary");
     if (!el) return;
     if (!rows.length) { el.innerHTML = ""; return; }
@@ -3249,6 +3264,7 @@
     var productLabel = productFilter ? esc(productFilter) : "All products";
     el.innerHTML =
       '<div class="filter-summary-row">' +
+      '<span class="tag' + (periodLabel ? "" : " slate") + '">' + (periodLabel ? esc(periodLabel) : "All dates") + "</span>" +
       '<span class="tag' + (officerFilter ? "" : " slate") + '">' + officerLabel + "</span>" +
       '<span class="tag' + (productFilter ? "" : " slate") + '">' + productLabel + "</span>" +
       '<span class="tag blue">' + rows.length + " entr" + (rows.length === 1 ? "y" : "ies") + "</span>" +
@@ -3319,18 +3335,77 @@
 
   // Shared by the table render, the print report and the WhatsApp summary so
   // all three always agree on what "the current filter" means.
+  // ---------- sales log: period filter (FY / month / date / range) ----------
+  // "all" follows the Financial year bar at the top (salesDocs). Any other
+  // mode works from the full history (salesDocsRaw) so the log can show a
+  // different FY, month or day without changing the rest of the app.
+  var MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function getSalesPeriod() {
+    var mode = (document.getElementById("salesPeriodMode") || {}).value || "all";
+    var v = function (id) { return (document.getElementById(id) || {}).value || ""; };
+    var p = { mode: mode, label: "", test: null };
+    if (mode === "fy") {
+      var fy = parseInt(v("salesPeriodFY"), 10);
+      if (fy) { p.label = fyLabel(fy); p.test = function (d) { return fyStartYearOf(d) === fy; }; }
+    } else if (mode === "month") {
+      var m = v("salesPeriodMonth");
+      if (m) {
+        var mp = m.split("-");
+        p.label = MONTHS_SHORT[parseInt(mp[1], 10) - 1] + " " + mp[0];
+        p.test = function (d) { return String(d || "").slice(0, 7) === m; };
+      }
+    } else if (mode === "date") {
+      var dt = v("salesPeriodDate");
+      if (dt) { p.label = fmtDate(dt); p.test = function (d) { return String(d || "").slice(0, 10) === dt; }; }
+    } else if (mode === "range") {
+      var from = v("salesPeriodFrom"), to = v("salesPeriodTo");
+      if (from || to) {
+        p.label = (from ? fmtDate(from) : "start") + " – " + (to ? fmtDate(to) : "today");
+        p.test = function (d) { d = String(d || "").slice(0, 10); return (!from || d >= from) && (!to || d <= to); };
+      }
+    }
+    if (!p.test) { p.mode = "all"; p.label = currentFY === "all" ? "" : fyLabel(currentFY); }
+    return p;
+  }
+
+  function refreshSalesPeriodControls() {
+    var mode = (document.getElementById("salesPeriodMode") || {}).value || "all";
+    ["salesPeriodFY", "salesPeriodMonth", "salesPeriodDate", "salesPeriodFrom", "salesPeriodTo"].forEach(function (id) {
+      var el = document.getElementById(id); if (!el) return;
+      el.hidden = !((mode === "fy" && id === "salesPeriodFY") || (mode === "month" && id === "salesPeriodMonth") ||
+        (mode === "date" && id === "salesPeriodDate") || (mode === "range" && (id === "salesPeriodFrom" || id === "salesPeriodTo")));
+    });
+    var fySel = document.getElementById("salesPeriodFY");
+    if (fySel) {
+      var years = [];
+      salesDocsRaw.forEach(function (d) { var y = fyStartYearOf(d.date); if (y !== null && years.indexOf(y) < 0) years.push(y); });
+      var todayFY = fyStartYearOf(todayISO());
+      if (todayFY !== null && years.indexOf(todayFY) < 0) years.push(todayFY);
+      years.sort(function (a, b) { return b - a; });
+      var prev = fySel.value;
+      fySel.innerHTML = years.map(function (y) { return '<option value="' + y + '">' + esc(fyLabel(y)) + "</option>"; }).join("");
+      fySel.value = (prev && years.indexOf(parseInt(prev, 10)) >= 0) ? prev : String(currentFY === "all" ? todayFY : currentFY);
+    }
+    var mEl = document.getElementById("salesPeriodMonth");
+    if (mode === "month" && mEl && !mEl.value) mEl.value = todayISO().slice(0, 7);
+    var dEl = document.getElementById("salesPeriodDate");
+    if (mode === "date" && dEl && !dEl.value) dEl.value = todayISO();
+  }
+
   function getSalesFilterState() {
     var q = (document.getElementById("salesSearch").value || "").toLowerCase();
     var officerFilter = document.getElementById("salesOfficerFilter").value;
     var productFilter = document.getElementById("salesProductFilter").value;
-    var baseRows = salesDocs.filter(function (d) {
+    var period = getSalesPeriod();
+    var source = period.mode === "all" ? salesDocs : salesDocsRaw.filter(function (d) { return period.test(d.date); });
+    var baseRows = source.filter(function (d) {
       if (officerFilter && d.officer !== officerFilter) return false;
       if (!q) return true;
       var hay = [d.officer, d.dealer, d.area, d.product, d.company, d.invoiceNo, d.notes].join(" ").toLowerCase();
       return hay.indexOf(q) >= 0;
     });
     var rows = productFilter ? baseRows.filter(function (d) { return splitProductTokens(d.product).indexOf(productFilter) >= 0; }) : baseRows;
-    return { q: (document.getElementById("salesSearch").value || "").trim(), officerFilter: officerFilter, productFilter: productFilter, baseRows: baseRows, rows: rows };
+    return { q: (document.getElementById("salesSearch").value || "").trim(), officerFilter: officerFilter, productFilter: productFilter, period: period, periodLabel: period.label, baseRows: baseRows, rows: rows };
   }
 
   function salesFilterQtySummary(rows) {
@@ -3356,6 +3431,7 @@
     if (!rows.length) { wrap.innerHTML = "<h1>EMR Sales Log</h1><p>No entries match the current filter.</p>"; return; }
     var sum = salesFilterQtySummary(rows);
     var filterBits = [];
+    if (state.periodLabel) filterBits.push("Period: " + state.periodLabel);
     if (state.officerFilter) filterBits.push("Officer: " + state.officerFilter);
     if (state.productFilter) filterBits.push("Product: " + state.productFilter);
     if (state.q) filterBits.push('Search: "' + state.q + '"');
@@ -3406,6 +3482,7 @@
     doc.text("EMR Sales Log", marginX, 14);
 
     var filterBits = [];
+    if (state.periodLabel) filterBits.push("Period: " + state.periodLabel);
     if (state.officerFilter) filterBits.push("Officer: " + state.officerFilter);
     if (state.productFilter) filterBits.push("Product: " + state.productFilter);
     if (state.q) filterBits.push('Search: "' + state.q + '"');
@@ -3525,6 +3602,7 @@
     e.preventDefault();
     var state = getSalesFilterState();
     var filterBits = [];
+    if (state.periodLabel) filterBits.push("Period: " + state.periodLabel);
     if (state.officerFilter) filterBits.push("Officer: " + state.officerFilter);
     if (state.productFilter) filterBits.push("Product: " + state.productFilter);
     navigator.share({
@@ -3542,6 +3620,7 @@
     var state = getSalesFilterState();
     var rows = state.rows;
     var lines = ["EMR — Sales Log Summary", "Date: " + fmtDate(todayISO())];
+    if (state.periodLabel) lines.push("Period: " + state.periodLabel);
     if (state.officerFilter) lines.push("Officer: " + state.officerFilter);
     if (state.productFilter) lines.push("Product: " + state.productFilter);
     if (state.q) lines.push('Search: "' + state.q + '"');
@@ -3566,7 +3645,7 @@
     var state = getSalesFilterState();
     var officerFilter = state.officerFilter, productFilter = state.productFilter;
     var baseRows = state.baseRows, rows = state.rows;
-    renderSalesFilterSummary(rows, officerFilter, productFilter);
+    renderSalesFilterSummary(rows, officerFilter, productFilter, state.periodLabel);
     renderSalesProductBreakdown(baseRows);
     updateSalesWhatsappLink();
     var wrap = document.getElementById("salesTableWrap");
@@ -5857,6 +5936,7 @@
     dispatchSyncDocs = filterByFY(dispatchSyncDocsRaw, "date");
     receiptDocs = filterByFY(receiptDocsOld.concat(receiptDocsNew), "date");
 
+    refreshSalesPeriodControls();
     renderSalesKpis(); renderSalesTable(); renderProjections(); renderPerformanceReport();
     renderPurchaseKpis(); renderPurchaseTable(); renderPurchaseSupplierChart();
     renderPaymentsKpis(); renderPaymentsByVendor(); renderPaymentsByVendor("ledgerVendorSummaryWrap"); renderPaymentTable();
@@ -8246,6 +8326,10 @@
   document.getElementById("salesSearch").addEventListener("input", renderSalesTable);
   document.getElementById("salesOfficerFilter").addEventListener("change", renderSalesTable);
   document.getElementById("salesProductFilter").addEventListener("change", renderSalesTable);
+  document.getElementById("salesPeriodMode").addEventListener("change", function () { refreshSalesPeriodControls(); renderSalesTable(); });
+  ["salesPeriodFY", "salesPeriodMonth", "salesPeriodDate", "salesPeriodFrom", "salesPeriodTo"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", renderSalesTable);
+  });
   document.getElementById("purchaseSearch").addEventListener("input", renderPurchaseTable);
   document.getElementById("purchaseSupplierFilter").addEventListener("change", renderPurchaseTable);
   document.getElementById("productionSearch").addEventListener("input", renderProductionTable);
