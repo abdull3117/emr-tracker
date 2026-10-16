@@ -302,7 +302,7 @@
     font-family: inherit; font-size: 0.83rem; padding: 7px 10px; border-radius: 8px;
     border: 1px solid var(--border); background: var(--surface-2); color: var(--ink);
   }
-  #salesPeriodRow [hidden], #receiptPeriodRow [hidden], #purchasePeriodRow [hidden], #paymentPeriodRow [hidden] { display: none !important; }
+  #salesPeriodRow [hidden], #receiptPeriodRow [hidden], #purchasePeriodRow [hidden], #paymentPeriodRow [hidden], #expensePeriodRow [hidden] { display: none !important; }
   .filter-summary-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -2px 0 14px; }
   .filter-summary-row .tag { font-size: 0.74rem; padding: 4px 10px; }
 
@@ -1009,6 +1009,20 @@
         <select id="expenseBranchFilter"><option value="">Both branches</option><option>Vikravandi</option><option>Orathur</option></select>
         <select id="expenseCategoryFilter"><option value="">All categories</option></select>
         <select id="expenseCompanyFilter"><option value="">All companies</option></select>
+      </div>
+      <div class="filter-row" id="expensePeriodRow">
+        <select id="expensePeriodMode" aria-label="Period">
+          <option value="all">Period: as Financial year bar</option>
+          <option value="fy">Financial year&hellip;</option>
+          <option value="month">Month&hellip;</option>
+          <option value="date">Particular date&hellip;</option>
+          <option value="range">Date range&hellip;</option>
+        </select>
+        <select id="expensePeriodFY" aria-label="Financial year" hidden></select>
+        <input type="month" id="expensePeriodMonth" aria-label="Month" hidden>
+        <input type="date" id="expensePeriodDate" aria-label="Date" hidden>
+        <input type="date" id="expensePeriodFrom" aria-label="From date" hidden>
+        <input type="date" id="expensePeriodTo" aria-label="To date" hidden>
       </div>
       <div id="expenseFilterSummary"></div>
       <div id="expenseTableWrap"></div>
@@ -4857,14 +4871,16 @@
     var cat = (document.getElementById("expenseCategoryFilter") || {}).value || "";
     var comp = (document.getElementById("expenseCompanyFilter") || {}).value || "";
     var br = (document.getElementById("expenseBranchFilter") || {}).value || "";
-    var rows = expenseDocs.filter(function (d) {
+    var period = getPeriod("expense");
+    var source = period.mode === "all" ? expenseDocs : expenseDocsRaw.filter(function (d) { return period.test(d.date); });
+    var rows = source.filter(function (d) {
       if (br && (d.branch || "") !== br) return false;
       if (cat && (d.category || "Miscellaneous") !== cat) return false;
       if (comp && (d.company || "") !== comp) return false;
       if (!q) return true;
       return [d.paidTo, d.category, d.company, d.mode, d.reference, d.notes].join(" ").toLowerCase().indexOf(q) >= 0;
     });
-    return { rows: rows, cat: cat, comp: comp, branch: br };
+    return { rows: rows, cat: cat, comp: comp, branch: br, period: period, periodLabel: period.label };
   }
 
   function renderExpenseTable() {
@@ -4872,14 +4888,16 @@
     var sumEl = document.getElementById("expenseFilterSummary");
     if (sumEl) {
       var t = 0; rows.forEach(function (d) { t += Number(d.amount) || 0; });
-      sumEl.innerHTML = rows.length ? ('<div class="filter-summary-row"><span class="tag' + (state.cat ? "" : " slate") + '">' + esc(state.cat || "All categories") + '</span>' +
+      sumEl.innerHTML = rows.length ? ('<div class="filter-summary-row">' +
+        '<span class="tag' + (state.periodLabel ? "" : " slate") + '">' + (state.periodLabel ? esc(state.periodLabel) : "All dates") + "</span>" +
+        '<span class="tag' + (state.cat ? "" : " slate") + '">' + esc(state.cat || "All categories") + '</span>' +
         '<span class="tag' + (state.branch ? "" : " slate") + '">' + esc(state.branch || "Both branches") + '</span>' +
         (state.comp ? '<span class="tag">' + esc(state.comp) + '</span>' : '') +
         '<span class="tag indigo">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + '</span><span class="tag">Total: ' + inr(t) + '</span></div>') : "";
     }
     var wrap = document.getElementById("expenseTableWrap");
     if (!wrap) return;
-    if (!expenseDocs.length) { wrap.innerHTML = '<div class="empty-state"><strong>No expenses logged yet</strong>Add your first expense using the form above.</div>'; return; }
+    if (!expenseDocsRaw.length) { wrap.innerHTML = '<div class="empty-state"><strong>No expenses logged yet</strong>Add your first expense using the form above.</div>'; return; }
     if (!rows.length) { wrap.innerHTML = '<div class="empty-state">No entries match that search/filter.</div>'; return; }
     var sorted = rows.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); });
     var html = '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Branch</th><th>Category</th><th>Paid to / Description</th><th>Mode</th><th class="num">Amount</th><th></th></tr></thead><tbody>';
@@ -4895,7 +4913,9 @@
         '<td class="num" style="font-weight:700;">' + inr(d.amount) + '</td>' +
         '<td style="white-space:nowrap;"><button class="btn-ghost" style="padding:4px 8px;font-size:.76rem;" data-edit-expense="' + esc(d.id) + '">Edit</button> <button class="btn-danger-ghost" data-del-expense="' + esc(d.id) + '">Delete</button></td></tr>';
     });
-    html += '</tbody></table></div>';
+    var eT = 0; rows.forEach(function (d) { eT += Number(d.amount) || 0; });
+    html += '</tbody><tfoot><tr style="font-weight:700;border-top:2px solid var(--border);"><td colspan="5">Total &mdash; ' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + '</td>' +
+      '<td class="num">' + inr(eT) + '</td><td></td></tr></tfoot></table></div>';
     if (rows.length > 500) html += '<p class="muted" style="margin:8px 4px 0;font-size:.78rem;">Showing first 500 of ' + rows.length + ' matching rows.</p>';
     wrap.innerHTML = html;
     wrap.querySelectorAll("[data-del-expense]").forEach(function (btn) {
@@ -5745,6 +5765,10 @@
   document.getElementById("expenseCategoryFilter").addEventListener("change", renderExpenseTable);
   document.getElementById("expenseCompanyFilter").addEventListener("change", renderExpenseTable);
   document.getElementById("expenseBranchFilter").addEventListener("change", renderExpenseTable);
+  document.getElementById("expensePeriodMode").addEventListener("change", function () { refreshPeriodControls("expense", expenseDocsRaw); renderExpenseTable(); });
+  ["expensePeriodFY", "expensePeriodMonth", "expensePeriodDate", "expensePeriodFrom", "expensePeriodTo"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", renderExpenseTable);
+  });
   document.getElementById("expenseCatBranchFilter").addEventListener("change", renderExpenseByCategory);
   document.getElementById("exCategory").addEventListener("change", toggleExpenseEbFields);
   wireCombo("exCategory", "exCategoryNew");
@@ -6013,6 +6037,7 @@
     refreshReceiptPeriodControls();
     refreshPeriodControls("purchase", purchaseDocsRaw);
     refreshPeriodControls("payment", paymentDocsRaw);
+    refreshPeriodControls("expense", expenseDocsRaw);
     renderSalesKpis(); renderSalesTable(); renderProjections(); renderPerformanceReport();
     renderPurchaseKpis(); renderPurchaseTable(); renderPurchaseSupplierChart();
     renderPaymentsKpis(); renderPaymentsByVendor(); renderPaymentsByVendor("ledgerVendorSummaryWrap"); renderPaymentTable();
