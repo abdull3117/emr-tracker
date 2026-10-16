@@ -302,7 +302,7 @@
     font-family: inherit; font-size: 0.83rem; padding: 7px 10px; border-radius: 8px;
     border: 1px solid var(--border); background: var(--surface-2); color: var(--ink);
   }
-  #salesPeriodRow [hidden] { display: none !important; }
+  #salesPeriodRow [hidden], #receiptPeriodRow [hidden] { display: none !important; }
   .filter-summary-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -2px 0 14px; }
   .filter-summary-row .tag { font-size: 0.74rem; padding: 4px 10px; }
 
@@ -772,6 +772,20 @@
       <div class="filter-row">
         <input type="search" id="receiptSearch" placeholder="Search dealer, officer, reference&hellip;" style="min-width:220px;">
         <select id="receiptOfficerFilter"><option value="">All officers</option></select>
+      </div>
+      <div class="filter-row" id="receiptPeriodRow">
+        <select id="receiptPeriodMode" aria-label="Period">
+          <option value="all">Period: as Financial year bar</option>
+          <option value="fy">Financial year&hellip;</option>
+          <option value="month">Month&hellip;</option>
+          <option value="date">Particular date&hellip;</option>
+          <option value="range">Date range&hellip;</option>
+        </select>
+        <select id="receiptPeriodFY" aria-label="Financial year" hidden></select>
+        <input type="month" id="receiptPeriodMonth" aria-label="Month" hidden>
+        <input type="date" id="receiptPeriodDate" aria-label="Date" hidden>
+        <input type="date" id="receiptPeriodFrom" aria-label="From date" hidden>
+        <input type="date" id="receiptPeriodTo" aria-label="To date" hidden>
       </div>
       <div id="receiptFilterSummary"></div>
       <div id="receiptTableWrap"></div>
@@ -3340,25 +3354,25 @@
   // mode works from the full history (salesDocsRaw) so the log can show a
   // different FY, month or day without changing the rest of the app.
   var MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  function getSalesPeriod() {
-    var mode = (document.getElementById("salesPeriodMode") || {}).value || "all";
+  function getPeriod(px) {
+    var mode = (document.getElementById(px + "PeriodMode") || {}).value || "all";
     var v = function (id) { return (document.getElementById(id) || {}).value || ""; };
     var p = { mode: mode, label: "", test: null };
     if (mode === "fy") {
-      var fy = parseInt(v("salesPeriodFY"), 10);
+      var fy = parseInt(v(px + "PeriodFY"), 10);
       if (fy) { p.label = fyLabel(fy); p.test = function (d) { return fyStartYearOf(d) === fy; }; }
     } else if (mode === "month") {
-      var m = v("salesPeriodMonth");
+      var m = v(px + "PeriodMonth");
       if (m) {
         var mp = m.split("-");
         p.label = MONTHS_SHORT[parseInt(mp[1], 10) - 1] + " " + mp[0];
         p.test = function (d) { return String(d || "").slice(0, 7) === m; };
       }
     } else if (mode === "date") {
-      var dt = v("salesPeriodDate");
+      var dt = v(px + "PeriodDate");
       if (dt) { p.label = fmtDate(dt); p.test = function (d) { return String(d || "").slice(0, 10) === dt; }; }
     } else if (mode === "range") {
-      var from = v("salesPeriodFrom"), to = v("salesPeriodTo");
+      var from = v(px + "PeriodFrom"), to = v(px + "PeriodTo");
       if (from || to) {
         p.label = (from ? fmtDate(from) : "start") + " – " + (to ? fmtDate(to) : "today");
         p.test = function (d) { d = String(d || "").slice(0, 10); return (!from || d >= from) && (!to || d <= to); };
@@ -3368,17 +3382,17 @@
     return p;
   }
 
-  function refreshSalesPeriodControls() {
-    var mode = (document.getElementById("salesPeriodMode") || {}).value || "all";
-    ["salesPeriodFY", "salesPeriodMonth", "salesPeriodDate", "salesPeriodFrom", "salesPeriodTo"].forEach(function (id) {
+  function refreshPeriodControls(px, rawDocs) {
+    var mode = (document.getElementById(px + "PeriodMode") || {}).value || "all";
+    [px + "PeriodFY", px + "PeriodMonth", px + "PeriodDate", px + "PeriodFrom", px + "PeriodTo"].forEach(function (id) {
       var el = document.getElementById(id); if (!el) return;
-      el.hidden = !((mode === "fy" && id === "salesPeriodFY") || (mode === "month" && id === "salesPeriodMonth") ||
-        (mode === "date" && id === "salesPeriodDate") || (mode === "range" && (id === "salesPeriodFrom" || id === "salesPeriodTo")));
+      el.hidden = !((mode === "fy" && id === px + "PeriodFY") || (mode === "month" && id === px + "PeriodMonth") ||
+        (mode === "date" && id === px + "PeriodDate") || (mode === "range" && (id === px + "PeriodFrom" || id === px + "PeriodTo")));
     });
-    var fySel = document.getElementById("salesPeriodFY");
+    var fySel = document.getElementById(px + "PeriodFY");
     if (fySel) {
       var years = [];
-      salesDocsRaw.forEach(function (d) { var y = fyStartYearOf(d.date); if (y !== null && years.indexOf(y) < 0) years.push(y); });
+      rawDocs.forEach(function (d) { var y = fyStartYearOf(d.date); if (y !== null && years.indexOf(y) < 0) years.push(y); });
       var todayFY = fyStartYearOf(todayISO());
       if (todayFY !== null && years.indexOf(todayFY) < 0) years.push(todayFY);
       years.sort(function (a, b) { return b - a; });
@@ -3386,11 +3400,16 @@
       fySel.innerHTML = years.map(function (y) { return '<option value="' + y + '">' + esc(fyLabel(y)) + "</option>"; }).join("");
       fySel.value = (prev && years.indexOf(parseInt(prev, 10)) >= 0) ? prev : String(currentFY === "all" ? todayFY : currentFY);
     }
-    var mEl = document.getElementById("salesPeriodMonth");
+    var mEl = document.getElementById(px + "PeriodMonth");
     if (mode === "month" && mEl && !mEl.value) mEl.value = todayISO().slice(0, 7);
-    var dEl = document.getElementById("salesPeriodDate");
+    var dEl = document.getElementById(px + "PeriodDate");
     if (mode === "date" && dEl && !dEl.value) dEl.value = todayISO();
   }
+
+  function getSalesPeriod() { return getPeriod("sales"); }
+  function refreshSalesPeriodControls() { refreshPeriodControls("sales", salesDocsRaw); }
+  function getReceiptPeriod() { return getPeriod("receipt"); }
+  function refreshReceiptPeriodControls() { refreshPeriodControls("receipt", receiptDocsOld.concat(receiptDocsNew)); }
 
   function getSalesFilterState() {
     var q = (document.getElementById("salesSearch").value || "").toLowerCase();
@@ -4495,22 +4514,25 @@
   function getReceiptFilterState() {
     var q = (document.getElementById("receiptSearch").value || "").toLowerCase();
     var officerFilter = document.getElementById("receiptOfficerFilter").value;
-    var rows = receiptDocs.filter(function (d) {
+    var period = getReceiptPeriod();
+    var source = period.mode === "all" ? receiptDocs : receiptDocsOld.concat(receiptDocsNew).filter(function (d) { return period.test(d.date); });
+    var rows = source.filter(function (d) {
       if (officerFilter && d.officer !== officerFilter) return false;
       if (!q) return true;
       var hay = [d.officer, d.dealer, d.company, d.invoiceNo, d.notes].join(" ").toLowerCase();
       return hay.indexOf(q) >= 0;
     });
-    return { officerFilter: officerFilter, rows: rows };
+    return { officerFilter: officerFilter, rows: rows, period: period, periodLabel: period.label };
   }
 
-  function renderReceiptFilterSummary(rows, officerFilter) {
+  function renderReceiptFilterSummary(rows, officerFilter, periodLabel) {
     var el = document.getElementById("receiptFilterSummary");
     if (!el) return;
     if (!rows.length) { el.innerHTML = ""; return; }
     var total = 0; rows.forEach(function (d) { total += Number(d.amount) || 0; });
     var officerLabel = officerFilter ? esc(officerFilter) : "All officers";
     el.innerHTML = '<div class="filter-summary-row">' +
+      '<span class="tag' + (periodLabel ? "" : " slate") + '">' + (periodLabel ? esc(periodLabel) : "All dates") + "</span>" +
       '<span class="tag' + (officerFilter ? "" : " slate") + '">' + officerLabel + "</span>" +
       '<span class="tag blue">' + rows.length + " entr" + (rows.length === 1 ? "y" : "ies") + "</span>" +
       '<span class="tag">Total: ' + inr(total) + "</span>" +
@@ -4520,9 +4542,9 @@
   function renderReceiptTable() {
     var state = getReceiptFilterState();
     var rows = state.rows;
-    renderReceiptFilterSummary(rows, state.officerFilter);
+    renderReceiptFilterSummary(rows, state.officerFilter, state.periodLabel);
     var wrap = document.getElementById("receiptTableWrap");
-    if (!receiptDocs.length) {
+    if (!receiptDocsOld.length && !receiptDocsNew.length) {
       wrap.innerHTML = '<div class="empty-state"><strong>No receipts logged yet</strong>Add your first receipt using the form above, or import a Tally Receipt Register.</div>';
       return;
     }
@@ -5937,6 +5959,7 @@
     receiptDocs = filterByFY(receiptDocsOld.concat(receiptDocsNew), "date");
 
     refreshSalesPeriodControls();
+    refreshReceiptPeriodControls();
     renderSalesKpis(); renderSalesTable(); renderProjections(); renderPerformanceReport();
     renderPurchaseKpis(); renderPurchaseTable(); renderPurchaseSupplierChart();
     renderPaymentsKpis(); renderPaymentsByVendor(); renderPaymentsByVendor("ledgerVendorSummaryWrap"); renderPaymentTable();
@@ -8340,6 +8363,10 @@
   document.getElementById("projOfficerFilter").addEventListener("change", renderProjections);
   document.getElementById("receiptSearch").addEventListener("input", renderReceiptTable);
   document.getElementById("receiptOfficerFilter").addEventListener("change", renderReceiptTable);
+  document.getElementById("receiptPeriodMode").addEventListener("change", function () { refreshReceiptPeriodControls(); renderReceiptTable(); });
+  ["receiptPeriodFY", "receiptPeriodMonth", "receiptPeriodDate", "receiptPeriodFrom", "receiptPeriodTo"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", renderReceiptTable);
+  });
   document.getElementById("paymentSearch").addEventListener("input", renderPaymentTable);
   document.getElementById("paymentSupplierFilter").addEventListener("change", renderPaymentTable);
 
