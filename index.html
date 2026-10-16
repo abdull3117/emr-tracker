@@ -302,7 +302,7 @@
     font-family: inherit; font-size: 0.83rem; padding: 7px 10px; border-radius: 8px;
     border: 1px solid var(--border); background: var(--surface-2); color: var(--ink);
   }
-  #salesPeriodRow [hidden], #receiptPeriodRow [hidden] { display: none !important; }
+  #salesPeriodRow [hidden], #receiptPeriodRow [hidden], #purchasePeriodRow [hidden], #paymentPeriodRow [hidden] { display: none !important; }
   .filter-summary-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -2px 0 14px; }
   .filter-summary-row .tag { font-size: 0.74rem; padding: 4px 10px; }
 
@@ -847,6 +847,20 @@
         <input type="search" id="purchaseSearch" placeholder="Search supplier, product&hellip;" style="min-width:220px;">
         <select id="purchaseSupplierFilter"><option value="">All suppliers</option></select>
       </div>
+      <div class="filter-row" id="purchasePeriodRow">
+        <select id="purchasePeriodMode" aria-label="Period">
+          <option value="all">Period: as Financial year bar</option>
+          <option value="fy">Financial year&hellip;</option>
+          <option value="month">Month&hellip;</option>
+          <option value="date">Particular date&hellip;</option>
+          <option value="range">Date range&hellip;</option>
+        </select>
+        <select id="purchasePeriodFY" aria-label="Financial year" hidden></select>
+        <input type="month" id="purchasePeriodMonth" aria-label="Month" hidden>
+        <input type="date" id="purchasePeriodDate" aria-label="Date" hidden>
+        <input type="date" id="purchasePeriodFrom" aria-label="From date" hidden>
+        <input type="date" id="purchasePeriodTo" aria-label="To date" hidden>
+      </div>
       <div id="purchaseFilterSummary"></div>
       <div id="purchaseTableWrap"></div>
     </div>
@@ -900,6 +914,20 @@
       <div class="filter-row">
         <input type="search" id="paymentSearch" placeholder="Search supplier, reference&hellip;" style="min-width:220px;">
         <select id="paymentSupplierFilter"><option value="">All suppliers</option></select>
+      </div>
+      <div class="filter-row" id="paymentPeriodRow">
+        <select id="paymentPeriodMode" aria-label="Period">
+          <option value="all">Period: as Financial year bar</option>
+          <option value="fy">Financial year&hellip;</option>
+          <option value="month">Month&hellip;</option>
+          <option value="date">Particular date&hellip;</option>
+          <option value="range">Date range&hellip;</option>
+        </select>
+        <select id="paymentPeriodFY" aria-label="Financial year" hidden></select>
+        <input type="month" id="paymentPeriodMonth" aria-label="Month" hidden>
+        <input type="date" id="paymentPeriodDate" aria-label="Date" hidden>
+        <input type="date" id="paymentPeriodFrom" aria-label="From date" hidden>
+        <input type="date" id="paymentPeriodTo" aria-label="To date" hidden>
       </div>
       <div id="paymentFilterSummary"></div>
       <div id="paymentTableWrap"></div>
@@ -3765,16 +3793,18 @@
     var supplierEl = document.getElementById("purchaseSupplierFilter");
     var q = (searchEl && searchEl.value || "").toLowerCase();
     var supplierFilter = supplierEl ? supplierEl.value : "";
-    var rows = purchaseDocs.filter(function (d) {
+    var period = getPeriod("purchase");
+    var source = period.mode === "all" ? purchaseDocs : purchaseDocsRaw.filter(function (d) { return period.test(d.date); });
+    var rows = source.filter(function (d) {
       if (supplierFilter && d.supplier !== supplierFilter) return false;
       if (!q) return true;
       var hay = [d.supplier, d.product, d.notes].join(" ").toLowerCase();
       return hay.indexOf(q) >= 0;
     });
-    return { q: (searchEl && searchEl.value || "").trim(), supplierFilter: supplierFilter, rows: rows };
+    return { q: (searchEl && searchEl.value || "").trim(), supplierFilter: supplierFilter, rows: rows, period: period, periodLabel: period.label };
   }
 
-  function renderPurchaseFilterSummary(rows, supplierFilter) {
+  function renderPurchaseFilterSummary(rows, supplierFilter, periodLabel) {
     var el = document.getElementById("purchaseFilterSummary");
     if (!el) return;
     if (!rows.length) { el.innerHTML = ""; return; }
@@ -3793,6 +3823,7 @@
     var supplierLabel = supplierFilter ? esc(supplierFilter) : "All suppliers";
     el.innerHTML =
       '<div class="filter-summary-row">' +
+      '<span class="tag' + (periodLabel ? "" : " slate") + '">' + (periodLabel ? esc(periodLabel) : "All dates") + "</span>" +
       '<span class="tag' + (supplierFilter ? "" : " slate") + '">' + supplierLabel + "</span>" +
       '<span class="tag blue">' + rows.length + " entr" + (rows.length === 1 ? "y" : "ies") + "</span>" +
       (qtyParts.length ? '<span class="tag warn">Qty: ' + esc(qtyParts.join(", ")) + "</span>" : "") +
@@ -3803,9 +3834,9 @@
   function renderPurchaseTable() {
     var state = getPurchaseFilterState();
     var rows = state.rows;
-    renderPurchaseFilterSummary(rows, state.supplierFilter);
+    renderPurchaseFilterSummary(rows, state.supplierFilter, state.periodLabel);
     var wrap = document.getElementById("purchaseTableWrap");
-    if (!purchaseDocs.length) {
+    if (!purchaseDocsRaw.length) {
       wrap.innerHTML = '<div class="empty-state"><strong>No purchases logged yet</strong>Add your first purchase using the form above.</div>';
       return;
     }
@@ -4399,22 +4430,25 @@
     var supplierEl = document.getElementById("paymentSupplierFilter");
     var q = (searchEl && searchEl.value || "").toLowerCase();
     var supplierFilter = supplierEl ? supplierEl.value : "";
-    var rows = paymentDocs.filter(function (d) {
+    var period = getPeriod("payment");
+    var source = period.mode === "all" ? paymentDocs : paymentDocsRaw.filter(function (d) { return period.test(d.date); });
+    var rows = source.filter(function (d) {
       if (supplierFilter && d.supplier !== supplierFilter) return false;
       if (!q) return true;
       var hay = [d.supplier, d.mode, d.invoiceNo, d.notes].join(" ").toLowerCase();
       return hay.indexOf(q) >= 0;
     });
-    return { supplierFilter: supplierFilter, rows: rows };
+    return { supplierFilter: supplierFilter, rows: rows, period: period, periodLabel: period.label };
   }
 
-  function renderPaymentFilterSummary(rows, supplierFilter) {
+  function renderPaymentFilterSummary(rows, supplierFilter, periodLabel) {
     var el = document.getElementById("paymentFilterSummary");
     if (!el) return;
     if (!rows.length) { el.innerHTML = ""; return; }
     var total = 0; rows.forEach(function (d) { total += Number(d.amount) || 0; });
     var supplierLabel = supplierFilter ? esc(supplierFilter) : "All suppliers";
     el.innerHTML = '<div class="filter-summary-row">' +
+      '<span class="tag' + (periodLabel ? "" : " slate") + '">' + (periodLabel ? esc(periodLabel) : "All dates") + "</span>" +
       '<span class="tag' + (supplierFilter ? "" : " slate") + '">' + supplierLabel + "</span>" +
       '<span class="tag indigo">' + rows.length + " entr" + (rows.length === 1 ? "y" : "ies") + "</span>" +
       '<span class="tag">Total: ' + inr(total) + "</span>" +
@@ -4424,10 +4458,10 @@
   function renderPaymentTable() {
     var state = getPaymentFilterState();
     var rows = state.rows;
-    renderPaymentFilterSummary(rows, state.supplierFilter);
+    renderPaymentFilterSummary(rows, state.supplierFilter, state.periodLabel);
     var wrap = document.getElementById("paymentTableWrap");
     if (!wrap) return;
-    if (!paymentDocs.length) {
+    if (!paymentDocsRaw.length) {
       wrap.innerHTML = '<div class="empty-state"><strong>No payments logged yet</strong>Add your first vendor payment using the form above.</div>';
       return;
     }
@@ -5960,6 +5994,8 @@
 
     refreshSalesPeriodControls();
     refreshReceiptPeriodControls();
+    refreshPeriodControls("purchase", purchaseDocsRaw);
+    refreshPeriodControls("payment", paymentDocsRaw);
     renderSalesKpis(); renderSalesTable(); renderProjections(); renderPerformanceReport();
     renderPurchaseKpis(); renderPurchaseTable(); renderPurchaseSupplierChart();
     renderPaymentsKpis(); renderPaymentsByVendor(); renderPaymentsByVendor("ledgerVendorSummaryWrap"); renderPaymentTable();
@@ -8355,6 +8391,10 @@
   });
   document.getElementById("purchaseSearch").addEventListener("input", renderPurchaseTable);
   document.getElementById("purchaseSupplierFilter").addEventListener("change", renderPurchaseTable);
+  document.getElementById("purchasePeriodMode").addEventListener("change", function () { refreshPeriodControls("purchase", purchaseDocsRaw); renderPurchaseTable(); });
+  ["purchasePeriodFY", "purchasePeriodMonth", "purchasePeriodDate", "purchasePeriodFrom", "purchasePeriodTo"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", renderPurchaseTable);
+  });
   document.getElementById("productionSearch").addEventListener("input", renderProductionTable);
   document.getElementById("productionProductFilter").addEventListener("change", renderProductionTable);
   document.getElementById("salesPrintBtn").addEventListener("click", printSalesLog);
@@ -8369,6 +8409,10 @@
   });
   document.getElementById("paymentSearch").addEventListener("input", renderPaymentTable);
   document.getElementById("paymentSupplierFilter").addEventListener("change", renderPaymentTable);
+  document.getElementById("paymentPeriodMode").addEventListener("change", function () { refreshPeriodControls("payment", paymentDocsRaw); renderPaymentTable(); });
+  ["paymentPeriodFY", "paymentPeriodMonth", "paymentPeriodDate", "paymentPeriodFrom", "paymentPeriodTo"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", renderPaymentTable);
+  });
 
   wireCombo("sOfficer", "sOfficerNew");
   document.getElementById("sOfficer").addEventListener("change", function () {
