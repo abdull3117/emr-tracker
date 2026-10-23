@@ -8579,7 +8579,9 @@
 
   // ---------------------------------------------------------------------
   // Manager Review: the manager confirms or flags each entry the owner or
-  // team adds. Reviews live in their own collection (tracker_reviews), keyed
+  // team adds. Reviews are stored as documents in tracker_syncMeta (the
+  // database rules only allow writes to existing collections) with
+  // kind:"review", id "review__<collection>__<docId>", and the key
   // "<collection>__<docId>", and carry a fingerprint of the entry. If the
   // entry is edited later, the fingerprint no longer matches and it goes
   // back to "waiting". Entries themselves are never changed by this tab.
@@ -8705,9 +8707,10 @@
     document.getElementById("rvTableWrap").innerHTML = html;
   }
   function rvScheduleRender() { clearTimeout(rvTimer); rvTimer = setTimeout(renderReview, 300); }
+  function rvRef(key) { return db.collection("tracker_syncMeta").doc("review__" + key); }
   function rvWrite(x, status, note) {
-    var body = { coll: x.sec.coll, docId: x.r.id, section: x.sec.label, date: x.date, status: status, note: note || "", fp: x.fp, by: "Manager", at: new Date().toISOString() };
-    return db.collection("tracker_reviews").doc(x.key).set(body);
+    var body = { kind: "review", coll: x.sec.coll, docId: x.r.id, section: x.sec.label, date: x.date, status: status, note: note || "", fp: x.fp, by: "Manager", at: new Date().toISOString() };
+    return rvRef(x.key).set(body);
   }
   document.getElementById("rvTableWrap").addEventListener("click", function (e) {
     var t = e.target.closest("button"); if (!t || !db) return;
@@ -8729,7 +8732,7 @@
       };
     } else if (t.hasAttribute("data-rv-undo")) {
       var y = rvShown[Number(t.getAttribute("data-rv-undo"))]; t.disabled = true;
-      db.collection("tracker_reviews").doc(y.key).delete().catch(function (err) { console.error(err); t.disabled = false; });
+      rvRef(y.key).delete().catch(function (err) { console.error(err); t.disabled = false; });
     }
   });
   document.getElementById("rvConfirmAll").addEventListener("click", function () {
@@ -8741,7 +8744,7 @@
       chunks.reduce(function (p, ch) {
         return p.then(function () {
           var b = db.batch(), at = new Date().toISOString();
-          ch.forEach(function (x) { b.set(db.collection("tracker_reviews").doc(x.key), { coll: x.sec.coll, docId: x.r.id, section: x.sec.label, date: x.date, status: "confirmed", note: "", fp: x.fp, by: "Manager", at: at }); });
+          ch.forEach(function (x) { b.set(rvRef(x.key), { kind: "review", coll: x.sec.coll, docId: x.r.id, section: x.sec.label, date: x.date, status: "confirmed", note: "", fp: x.fp, by: "Manager", at: at }); });
           return b.commit();
         });
       }, Promise.resolve()).catch(function (err) { console.error(err); appAlert("Some confirmations could not be saved — try again."); });
@@ -8766,8 +8769,8 @@
   renderCashBook = function () { var r = rvOrigCash.apply(this, arguments); rvScheduleRender(); return r; };
   function rvStartListeners() {
     if (!db) { setTimeout(rvStartListeners, 500); return; }
-    db.collection("tracker_reviews").onSnapshot(function (snap) {
-      rvReviews = {}; snap.docs.forEach(function (d) { rvReviews[d.id] = d.data(); });
+    db.collection("tracker_syncMeta").where("kind", "==", "review").onSnapshot(function (snap) {
+      rvReviews = {}; snap.docs.forEach(function (d) { rvReviews[d.id.replace(/^review__/, "")] = d.data(); });
       rvScheduleRender();
     }, function (e) { console.error("reviews sub error", e); });
     db.doc("tracker_syncMeta/review").onSnapshot(function (snap) {
