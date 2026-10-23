@@ -225,10 +225,10 @@
 
   /* Manager Review */
   nav.tabs button[data-tab="review"].active { color: var(--warn); border-bottom-color: var(--warn); }
-  html[data-role="manager"] nav.tabs .tab-btn:not([data-tab="review"]) { display: none; }
-  html[data-role="manager"] .panel:not(#panel-review) { display: none !important; }
-  html[data-role="manager"] #panel-review { display: block; }
-  html[data-role="manager"] .fy-bar, html[data-role="manager"] #fySelect { display: none; }
+  html[data-reviewer] nav.tabs .tab-btn:not([data-tab="review"]) { display: none; }
+  html[data-reviewer] .panel:not(#panel-review) { display: none !important; }
+  html[data-reviewer] #panel-review { display: block; }
+  html[data-reviewer] .fy-bar, html[data-reviewer] #fySelect { display: none; }
   .rv-badge { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 4px; border-radius: 9px; background: var(--warn); color: #fff; font-size: 0.7rem; line-height: 18px; text-align: center; }
   .rv-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
   .rv-controls .field { min-width: 140px; display: flex; flex-direction: column; gap: 4px; }
@@ -244,8 +244,8 @@
   .rv-flag-row td { background: var(--surface-2); }
   .rv-flag-row input { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: inherit; font: inherit; }
   .rv-only-manager { display: none; }
-  html[data-role="manager"] .rv-only-manager { display: inline-flex; }
-  html[data-role="manager"] p.rv-only-manager { display: block; }
+  html[data-reviewer] .rv-only-manager { display: inline-flex; }
+  html[data-reviewer] p.rv-only-manager { display: block; }
   @media (max-width: 640px) {
     #rvTableWrap table { min-width: 0; }
     #rvTableWrap thead { display: none; }
@@ -259,7 +259,7 @@
     #rvTableWrap tbody td:nth-child(6) { grid-column: 1 / -1; margin-top: 6px; }
     #rvTableWrap .rv-flag-row td { grid-column: 1 / -1; }
   }
-  html[data-role="manager"] .rv-only-owner { display: none !important; }
+  html[data-reviewer] .rv-only-owner { display: none !important; }
   .panel { display: none; }
   .panel.active { display: block; }
 
@@ -526,6 +526,8 @@
     var ADMIN_HASH = "b97c6bd1d212e55a03b591b68470794bb96fdf7700b01ce7ce95d59a5390b22d";
     var TEAM_HASH = "e672b7f6c2f08d00452e72d9cff3fd5ef19130c7270ec854f10c8d6a3b96b45d";
     // Manager login: sees only the Manager Review tab, to confirm or flag entries.
+    // Staff reviewer (Mrs. Anandi): same review tab, Purchases and Payments only.
+    var ANANDI_HASH = "5484b2c9e7e0e7c90648ef5839739d12fc87c2e085db79143f32a5f0468d9b48";
     var MANAGER_HASH = "836fcf094ca945955829a45e257744703f86003329d768eeb4664fad0af964bb";
     var STORAGE_KEY = "emrTrackerAuthRole";
 
@@ -539,6 +541,8 @@
 
     function showApp(role) {
       document.documentElement.setAttribute("data-role", role || "admin");
+      if (role === "manager" || role === "anandi") document.documentElement.setAttribute("data-reviewer", role);
+      else document.documentElement.removeAttribute("data-reviewer");
       document.getElementById("lockScreen").hidden = true;
       document.getElementById("appRoot").hidden = false;
     }
@@ -554,7 +558,7 @@
     function initLockState() {
       var savedRole = null;
       try { savedRole = localStorage.getItem(STORAGE_KEY); } catch (eStorage) { savedRole = null; }
-      if (savedRole === "admin" || savedRole === "team" || savedRole === "manager") {
+      if (savedRole === "admin" || savedRole === "team" || savedRole === "manager" || savedRole === "anandi") {
         showApp(savedRole);
       } else {
         showLock();
@@ -566,6 +570,7 @@
         logoutBtn.addEventListener("click", function () {
           try { localStorage.removeItem(STORAGE_KEY); } catch (eStorage3) {}
           document.documentElement.removeAttribute("data-role");
+          document.documentElement.removeAttribute("data-reviewer");
           var pwdEl = document.getElementById("lockPassword");
           if (pwdEl) pwdEl.value = "";
           var errEl = document.getElementById("lockErr");
@@ -599,7 +604,7 @@
       var errEl = document.getElementById("lockErr");
       errEl.textContent = "";
       sha256Hex(pwd).then(function (hex) {
-        var role = hex === ADMIN_HASH ? "admin" : (hex === TEAM_HASH ? "team" : (hex === MANAGER_HASH ? "manager" : null));
+        var role = hex === ADMIN_HASH ? "admin" : (hex === TEAM_HASH ? "team" : (hex === MANAGER_HASH ? "manager" : (hex === ANANDI_HASH ? "anandi" : null)));
         if (!role) {
           errEl.textContent = "Incorrect password — please try again.";
           document.getElementById("lockPassword").value = "";
@@ -607,7 +612,7 @@
         }
         try { localStorage.setItem(STORAGE_KEY, role); } catch (eStorage2) {}
         showApp(role);
-        if (role === "manager" && window.emrOpenReviewTab) window.emrOpenReviewTab();
+        if ((role === "manager" || role === "anandi") && window.emrOpenReviewTab) window.emrOpenReviewTab();
       }).catch(function () {
         errEl.textContent = "Could not check that password — please try again.";
       });
@@ -1519,6 +1524,7 @@
       <p class="hint rv-only-manager">Check each entry against the bills and books. Press <strong>Confirm</strong> if it is correct, or <strong>Flag</strong> and write what is wrong. Flagged entries go back to the owner.</p>
       <div class="rv-controls">
         <div class="field"><label for="rvSection">Section</label><select id="rvSection"><option value="all">All sections</option></select></div>
+        <div class="field"><label for="rvCompany">Company</label><select id="rvCompany"><option value="all">Both companies</option><option value="EMR Agro Industries">EMR Agro Industries</option><option value="EMR Agro Traders">EMR Agro Traders</option><option value="none">Company not set</option></select></div>
         <div class="field"><label for="rvStatus">Status</label><select id="rvStatus"><option value="waiting">Waiting for review</option><option value="flagged">Flagged</option><option value="confirmed">Confirmed</option><option value="all">All</option></select></div>
         <div class="field"><label for="rvFrom">Entry date from</label><input type="date" id="rvFrom"></div>
         <div class="field"><label for="rvTo">to</label><input type="date" id="rvTo"></div>
@@ -8588,7 +8594,13 @@
   // ---------------------------------------------------------------------
   var rvReviews = {}, rvSince = "2026-10-23", rvRendering = false, rvTimer = null;
   var RV_ROLE = (function () { try { return localStorage.getItem("emrTrackerAuthRole") || "admin"; } catch (e) { return "admin"; } })();
-  function rvIsManager() { var r = document.documentElement.getAttribute("data-role"); return (r || RV_ROLE) === "manager"; }
+  function rvRole() { return document.documentElement.getAttribute("data-role") || RV_ROLE; }
+  function rvIsManager() { var r = rvRole(); return r === "manager" || r === "anandi"; }
+  // Which sections each reviewer may confirm; the manager sees everything.
+  var RV_SCOPE = { anandi: ["purchases", "payments"] };
+  var RV_NAME = { manager: "Manager", anandi: "Anandi" };
+  function rvInScope(key) { var sc = RV_SCOPE[rvRole()]; return !sc || sc.indexOf(key) >= 0; }
+  function rvByName() { return RV_NAME[rvRole()] || "Manager"; }
   var RV_SECTIONS = [
     { key: "cashbook", coll: "tracker_cashbook", label: "Cash Book",
       rows: function () { return (cashDocs || []).filter(function (r) { return r.kind === "line"; }); },
@@ -8604,11 +8616,11 @@
       amt: function (r) { return Number(r.amount) || 0; } },
     { key: "purchases", coll: "tracker_purchases", label: "Purchases",
       rows: function () { return purchaseDocsRaw || []; },
-      desc: function (r) { return [r.supplier, r.product, (r.quantity ? r.quantity + " " + (r.unit || "") : ""), r.rate ? "rate " + inr(r.rate) : "", r.notes].filter(Boolean).join(" · "); },
+      desc: function (r) { return [r.supplier, r.product, (r.quantity ? r.quantity + " " + (r.unit || "") : ""), r.rate ? "rate " + inr(r.rate) : "", r.invoiceNo ? "Inv " + r.invoiceNo : "", r.company, r.notes].filter(Boolean).join(" · "); },
       amt: function (r) { return Number(r.value) || 0; } },
     { key: "payments", coll: "tracker_payments", label: "Payments",
       rows: function () { return paymentDocsRaw || []; },
-      desc: function (r) { return [r.supplier, r.mode, r.invoiceNo, r.notes].filter(Boolean).join(" · "); },
+      desc: function (r) { return [r.supplier, r.mode, r.invoiceNo, r.company, r.notes].filter(Boolean).join(" · "); },
       amt: function (r) { return Number(r.amount) || 0; } },
     { key: "expenses", coll: "tracker_expenses", label: "Expenses",
       rows: function () { return expenseDocsRaw || []; },
@@ -8638,6 +8650,7 @@
   function rvCollectAll() {
     var out = [];
     RV_SECTIONS.forEach(function (sec) {
+      if (!rvInScope(sec.key)) return;
       sec.rows().forEach(function (r) {
         if (!r || !r.id) return;
         if (rvMadeOn(r) < rvSince) return;
@@ -8652,10 +8665,12 @@
   }
   function rvFilter(all) {
     var sec = document.getElementById("rvSection").value, st = document.getElementById("rvStatus").value;
+    var co = document.getElementById("rvCompany").value;
     var from = document.getElementById("rvFrom").value, to = document.getElementById("rvTo").value;
     var q = (document.getElementById("rvSearch").value || "").toLowerCase().trim();
     return all.filter(function (x) {
       if (sec !== "all" && x.sec.key !== sec) return false;
+      if (co !== "all") { var rc = (x.r.company || "").trim(); if (co === "none" ? rc !== "" : rc.toLowerCase() !== co.toLowerCase()) return false; }
       if (st !== "all" && x.status !== st) return false;
       if (from && x.date < from) return false;
       if (to && x.date > to) return false;
@@ -8679,7 +8694,7 @@
     if (badge) { badge.hidden = badgeN === 0; badge.textContent = badgeN; }
     document.getElementById("rvKpis").innerHTML =
       '<div class="kpi"><div class="label">Waiting for review</div><div class="value">' + waiting + '</div></div>' +
-      '<div class="kpi"><div class="label">Flagged by manager</div><div class="value" style="color:var(--bad)">' + flagged + '</div></div>' +
+      '<div class="kpi"><div class="label">Flagged</div><div class="value" style="color:var(--bad)">' + flagged + '</div></div>' +
       '<div class="kpi"><div class="label">Confirmed</div><div class="value" style="color:var(--good)">' + confirmed + '</div></div>';
     rvShown = rvFilter(all);
     var mgr = rvIsManager(), LIMIT = 400;
@@ -8709,7 +8724,7 @@
   function rvScheduleRender() { clearTimeout(rvTimer); rvTimer = setTimeout(renderReview, 300); }
   function rvRef(key) { return db.collection("tracker_syncMeta").doc("review__" + key); }
   function rvWrite(x, status, note) {
-    var body = { kind: "review", coll: x.sec.coll, docId: x.r.id, section: x.sec.label, date: x.date, status: status, note: note || "", fp: x.fp, by: "Manager", at: new Date().toISOString() };
+    var body = { kind: "review", coll: x.sec.coll, docId: x.r.id, section: x.sec.label, date: x.date, status: status, note: note || "", fp: x.fp, by: rvByName(), at: new Date().toISOString() };
     return rvRef(x.key).set(body);
   }
   document.getElementById("rvTableWrap").addEventListener("click", function (e) {
@@ -8744,24 +8759,28 @@
       chunks.reduce(function (p, ch) {
         return p.then(function () {
           var b = db.batch(), at = new Date().toISOString();
-          ch.forEach(function (x) { b.set(rvRef(x.key), { kind: "review", coll: x.sec.coll, docId: x.r.id, section: x.sec.label, date: x.date, status: "confirmed", note: "", fp: x.fp, by: "Manager", at: at }); });
+          ch.forEach(function (x) { b.set(rvRef(x.key), { kind: "review", coll: x.sec.coll, docId: x.r.id, section: x.sec.label, date: x.date, status: "confirmed", note: "", fp: x.fp, by: rvByName(), at: at }); });
           return b.commit();
         });
       }, Promise.resolve()).catch(function (err) { console.error(err); appAlert("Some confirmations could not be saved — try again."); });
     });
   });
-  ["rvSection", "rvStatus", "rvFrom", "rvTo"].forEach(function (id) { document.getElementById(id).addEventListener("change", renderReview); });
+  ["rvSection", "rvCompany", "rvStatus", "rvFrom", "rvTo"].forEach(function (id) { document.getElementById(id).addEventListener("change", renderReview); });
   document.getElementById("rvSearch").addEventListener("input", rvScheduleRender);
   document.getElementById("rvSince").addEventListener("change", function () {
     var v = this.value; if (!v || !db) return;
     db.doc("tracker_syncMeta/review").set({ since: v, updatedAt: new Date().toISOString() }, { merge: true });
   });
-  (function () {
-    var sel = document.getElementById("rvSection");
-    RV_SECTIONS.forEach(function (sec) { var o = document.createElement("option"); o.value = sec.key; o.textContent = sec.label; sel.appendChild(o); });
-    document.getElementById("rvSince").value = rvSince;
-  })();
-  window.emrOpenReviewTab = function () { var b = document.querySelector('.tab-btn[data-tab="review"]'); if (b) b.click(); };
+  function rvBuildSections() {
+    var sel = document.getElementById("rvSection"), keep = sel.value;
+    sel.innerHTML = '<option value="all">All sections</option>';
+    RV_SECTIONS.forEach(function (sec) { if (!rvInScope(sec.key)) return; var o = document.createElement("option"); o.value = sec.key; o.textContent = sec.label; sel.appendChild(o); });
+    sel.value = [].some.call(sel.options, function (o) { return o.value === keep; }) ? keep : "all";
+  }
+  rvBuildSections();
+  document.getElementById("rvSince").value = rvSince;
+  // Called right after login, when the role may have changed without a reload.
+  window.emrOpenReviewTab = function () { rvBuildSections(); var b = document.querySelector('.tab-btn[data-tab="review"]'); if (b) b.click(); renderReview(); };
   // Re-render the review list whenever the tracker's data refreshes.
   var rvOrigApply = applyFYFilterAndRenderAll;
   applyFYFilterAndRenderAll = function () { var r = rvOrigApply.apply(this, arguments); rvScheduleRender(); return r; };
@@ -8779,7 +8798,7 @@
     }, function (e) { console.error("review settings sub error", e); });
   }
   rvStartListeners();
-  if (RV_ROLE === "manager") setTimeout(window.emrOpenReviewTab, 0);
+  if (RV_ROLE === "manager" || RV_ROLE === "anandi") setTimeout(window.emrOpenReviewTab, 0);
 })();
 </script>
 
