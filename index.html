@@ -1525,6 +1525,7 @@
       <div class="rv-controls">
         <div class="field"><label for="rvSection">Section</label><select id="rvSection"><option value="all">All sections</option></select></div>
         <div class="field"><label for="rvCompany">Company</label><select id="rvCompany"><option value="all">Both companies</option><option value="EMR Agro Industries">EMR Agro Industries</option><option value="EMR Agro Traders">EMR Agro Traders</option><option value="none">Company not set</option></select></div>
+        <div class="field"><label for="rvFactory">Factory</label><select id="rvFactory"><option value="all">Both factories</option><option value="Orathur">Orathur</option><option value="Vikravandi">Vikravandi</option><option value="none">Factory not set</option></select></div>
         <div class="field"><label for="rvStatus">Status</label><select id="rvStatus"><option value="waiting">Waiting for review</option><option value="flagged">Flagged</option><option value="confirmed">Confirmed</option><option value="all">All</option></select></div>
         <div class="field"><label for="rvFrom">Entry date from</label><input type="date" id="rvFrom"></div>
         <div class="field"><label for="rvTo">to</label><input type="date" id="rvTo"></div>
@@ -8663,14 +8664,28 @@
     out.sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
     return out;
   }
+  function rvFactoryOf(x) {
+    var r = x.r, v = "";
+    if (x.sec.key === "cashbook") v = r.book || "";
+    else v = r.fuelFactory || r.branch || r.factory || r.plant || r.book || "";
+    var t = String(v).toLowerCase();
+    if (/vkd|vikra|plant ?2/.test(t)) return "Vikravandi";
+    if (/orathur/.test(t)) return "Orathur";
+    var all = JSON.stringify(r).toLowerCase();
+    if (/vkd|vikravandi|plant ?2/.test(all)) return "Vikravandi";
+    if (/orathur/.test(all)) return "Orathur";
+    return "";
+  }
   function rvFilter(all) {
     var sec = document.getElementById("rvSection").value, st = document.getElementById("rvStatus").value;
     var co = document.getElementById("rvCompany").value;
+    var fa = document.getElementById("rvFactory").value;
     var from = document.getElementById("rvFrom").value, to = document.getElementById("rvTo").value;
     var q = (document.getElementById("rvSearch").value || "").toLowerCase().trim();
     return all.filter(function (x) {
       if (sec !== "all" && x.sec.key !== sec) return false;
       if (co !== "all") { var rc = (x.r.company || "").trim(); if (co === "none" ? rc !== "" : rc.toLowerCase() !== co.toLowerCase()) return false; }
+      if (fa !== "all") { var rf = rvFactoryOf(x); if (fa === "none" ? rf !== "" : rf !== fa) return false; }
       if (st !== "all" && x.status !== st) return false;
       if (from && x.date < from) return false;
       if (to && x.date > to) return false;
@@ -8715,7 +8730,7 @@
       } else if (x.status === "flagged") {
         act += '<button class="btn btn-ghost" data-rv-undo="' + i + '" title="Use this after you have checked or corrected the entry">Send back for review</button>';
       }
-      html += '<tr><td style="white-space:nowrap">' + esc(x.date) + '</td><td>' + esc(x.sec.label) + '</td><td style="min-width:240px">' + esc(x.sec.desc(x.r)) + '<div class="muted" style="font-size:.72rem">' + esc(x.r.source || "") + '</div></td><td class="num">' + inr(x.sec.amt(x.r)) + '</td><td>' + st + '</td><td><div class="rv-actions">' + act + '</div></td></tr>';
+      html += '<tr><td style="white-space:nowrap">' + esc(x.date) + '</td><td>' + esc(x.sec.label) + (rvFactoryOf(x) ? '<div class="muted" style="font-size:.72rem">' + esc(rvFactoryOf(x)) + '</div>' : '') + '</td><td style="min-width:240px">' + esc(x.sec.desc(x.r)) + '<div class="muted" style="font-size:.72rem">' + esc(x.r.source || "") + '</div></td><td class="num">' + inr(x.sec.amt(x.r)) + '</td><td>' + st + '</td><td><div class="rv-actions">' + act + '</div></td></tr>';
     });
     html += '</tbody></table>';
     if (rvShown.length > LIMIT) html += '<p class="muted" style="padding:10px 14px">Showing the latest ' + LIMIT + ' of ' + rvShown.length + '. Narrow the dates or section to see the rest.</p>';
@@ -8765,7 +8780,7 @@
       }, Promise.resolve()).catch(function (err) { console.error(err); appAlert("Some confirmations could not be saved — try again."); });
     });
   });
-  ["rvSection", "rvCompany", "rvStatus", "rvFrom", "rvTo"].forEach(function (id) { document.getElementById(id).addEventListener("change", renderReview); });
+  ["rvSection", "rvCompany", "rvFactory", "rvStatus", "rvFrom", "rvTo"].forEach(function (id) { document.getElementById(id).addEventListener("change", renderReview); });
   document.getElementById("rvSearch").addEventListener("input", rvScheduleRender);
   document.getElementById("rvSince").addEventListener("change", function () {
     var v = this.value; if (!v || !db) return;
