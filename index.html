@@ -222,6 +222,44 @@
   nav.tabs button[data-tab="ledger"].active { color: var(--brand); border-bottom-color: var(--brand); }
   nav.tabs button[data-tab="settings"].active { color: var(--slate); border-bottom-color: var(--slate); }
 
+
+  /* Manager Review */
+  nav.tabs button[data-tab="review"].active { color: var(--warn); border-bottom-color: var(--warn); }
+  html[data-role="manager"] nav.tabs .tab-btn:not([data-tab="review"]) { display: none; }
+  html[data-role="manager"] .panel:not(#panel-review) { display: none !important; }
+  html[data-role="manager"] #panel-review { display: block; }
+  html[data-role="manager"] .fy-bar, html[data-role="manager"] #fySelect { display: none; }
+  .rv-badge { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 4px; border-radius: 9px; background: var(--warn); color: #fff; font-size: 0.7rem; line-height: 18px; text-align: center; }
+  .rv-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+  .rv-controls .field { min-width: 140px; display: flex; flex-direction: column; gap: 4px; }
+  .rv-controls label { font-size: .72rem; color: var(--ink-2); font-weight: 600; }
+  .rv-controls select, .rv-controls input { font-family: inherit; font-size: .88rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; color: var(--ink); }
+  .rv-status { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.74rem; font-weight: 600; white-space: nowrap; }
+  .rv-status.waiting { background: var(--surface-2); color: var(--warn); border: 1px solid var(--warn); }
+  .rv-status.confirmed { background: var(--surface-2); color: var(--good); border: 1px solid var(--good); }
+  .rv-status.flagged { background: var(--surface-2); color: var(--bad); border: 1px solid var(--bad); }
+  .rv-note { color: var(--bad); font-size: 0.78rem; margin-top: 4px; }
+  .rv-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .rv-actions .btn { padding: 5px 10px; font-size: 0.78rem; }
+  .rv-flag-row td { background: var(--surface-2); }
+  .rv-flag-row input { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: inherit; font: inherit; }
+  .rv-only-manager { display: none; }
+  html[data-role="manager"] .rv-only-manager { display: inline-flex; }
+  html[data-role="manager"] p.rv-only-manager { display: block; }
+  @media (max-width: 640px) {
+    #rvTableWrap table { min-width: 0; }
+    #rvTableWrap thead { display: none; }
+    #rvTableWrap tbody tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    #rvTableWrap tbody td { display: block; padding: 0; border: none; }
+    #rvTableWrap tbody td:nth-child(1) { grid-column: 1; color: var(--muted); font-size: .76rem; }
+    #rvTableWrap tbody td:nth-child(2) { grid-column: 2; grid-row: 1; text-align: right; color: var(--muted); font-size: .76rem; }
+    #rvTableWrap tbody td:nth-child(3) { grid-column: 1 / -1; min-width: 0 !important; }
+    #rvTableWrap tbody td:nth-child(4) { grid-column: 1; text-align: left; font-weight: 700; }
+    #rvTableWrap tbody td:nth-child(5) { grid-column: 2; grid-row: 3; text-align: right; }
+    #rvTableWrap tbody td:nth-child(6) { grid-column: 1 / -1; margin-top: 6px; }
+    #rvTableWrap .rv-flag-row td { grid-column: 1 / -1; }
+  }
+  html[data-role="manager"] .rv-only-owner { display: none !important; }
   .panel { display: none; }
   .panel.active { display: block; }
 
@@ -487,6 +525,8 @@
   (function () {
     var ADMIN_HASH = "b97c6bd1d212e55a03b591b68470794bb96fdf7700b01ce7ce95d59a5390b22d";
     var TEAM_HASH = "e672b7f6c2f08d00452e72d9cff3fd5ef19130c7270ec854f10c8d6a3b96b45d";
+    // Manager login: sees only the Manager Review tab, to confirm or flag entries.
+    var MANAGER_HASH = "836fcf094ca945955829a45e257744703f86003329d768eeb4664fad0af964bb";
     var STORAGE_KEY = "emrTrackerAuthRole";
 
     function sha256Hex(text) {
@@ -497,7 +537,8 @@
       });
     }
 
-    function showApp() {
+    function showApp(role) {
+      document.documentElement.setAttribute("data-role", role || "admin");
       document.getElementById("lockScreen").hidden = true;
       document.getElementById("appRoot").hidden = false;
     }
@@ -513,8 +554,8 @@
     function initLockState() {
       var savedRole = null;
       try { savedRole = localStorage.getItem(STORAGE_KEY); } catch (eStorage) { savedRole = null; }
-      if (savedRole === "admin" || savedRole === "team") {
-        showApp();
+      if (savedRole === "admin" || savedRole === "team" || savedRole === "manager") {
+        showApp(savedRole);
       } else {
         showLock();
       }
@@ -524,6 +565,7 @@
       if (logoutBtn) {
         logoutBtn.addEventListener("click", function () {
           try { localStorage.removeItem(STORAGE_KEY); } catch (eStorage3) {}
+          document.documentElement.removeAttribute("data-role");
           var pwdEl = document.getElementById("lockPassword");
           if (pwdEl) pwdEl.value = "";
           var errEl = document.getElementById("lockErr");
@@ -557,14 +599,15 @@
       var errEl = document.getElementById("lockErr");
       errEl.textContent = "";
       sha256Hex(pwd).then(function (hex) {
-        var role = hex === ADMIN_HASH ? "admin" : (hex === TEAM_HASH ? "team" : null);
+        var role = hex === ADMIN_HASH ? "admin" : (hex === TEAM_HASH ? "team" : (hex === MANAGER_HASH ? "manager" : null));
         if (!role) {
           errEl.textContent = "Incorrect password — please try again.";
           document.getElementById("lockPassword").value = "";
           return;
         }
         try { localStorage.setItem(STORAGE_KEY, role); } catch (eStorage2) {}
-        showApp();
+        showApp(role);
+        if (role === "manager" && window.emrOpenReviewTab) window.emrOpenReviewTab();
       }).catch(function () {
         errEl.textContent = "Could not check that password — please try again.";
       });
@@ -627,6 +670,7 @@
     <button class="tab-btn" data-tab="projections">Officer Performance</button>
     <button class="tab-btn" data-tab="audit">Balance Reconciliation</button>
     <button class="tab-btn" data-tab="ledger">Ledger</button>
+    <button class="tab-btn" data-tab="review">Manager Review <span class="rv-badge" id="rvBadge" hidden></span></button>
     <button class="tab-btn" data-tab="settings">Settings</button>
   </nav>
 
@@ -1468,6 +1512,29 @@
   </section>
 
   <!-- SETTINGS -->
+  <section class="panel" id="panel-review">
+    <div class="card">
+      <h2>Manager review</h2>
+      <p class="hint rv-only-owner">Every entry or upload made from the review start date waits here until the manager confirms it or flags a problem (wrong rate, amount, party or date). If you edit an entry after it was confirmed or flagged, it comes back for review automatically.</p>
+      <p class="hint rv-only-manager">Check each entry against the bills and books. Press <strong>Confirm</strong> if it is correct, or <strong>Flag</strong> and write what is wrong. Flagged entries go back to the owner.</p>
+      <div class="rv-controls">
+        <div class="field"><label for="rvSection">Section</label><select id="rvSection"><option value="all">All sections</option></select></div>
+        <div class="field"><label for="rvStatus">Status</label><select id="rvStatus"><option value="waiting">Waiting for review</option><option value="flagged">Flagged</option><option value="confirmed">Confirmed</option><option value="all">All</option></select></div>
+        <div class="field"><label for="rvFrom">Entry date from</label><input type="date" id="rvFrom"></div>
+        <div class="field"><label for="rvTo">to</label><input type="date" id="rvTo"></div>
+        <div class="field" style="flex:1;min-width:160px"><label for="rvSearch">Search</label><input id="rvSearch" placeholder="Party, item, book..."></div>
+        <button type="button" class="btn btn-primary rv-only-manager" id="rvConfirmAll">Confirm all shown</button>
+      </div>
+      <div class="rv-controls rv-only-owner" style="margin-top:10px">
+        <div class="field"><label for="rvSince">Review entries made from</label><input type="date" id="rvSince"></div>
+        <span class="muted" style="font-size:.78rem;padding-bottom:8px">Older entries are treated as already checked.</span>
+      </div>
+    </div>
+    <div class="kpi-row" id="rvKpis"></div>
+    <div class="card" style="padding:0">
+      <div class="table-wrap" id="rvTableWrap" style="border:none"></div>
+    </div>
+  </section>
   <section class="panel" id="panel-settings">
     <div class="card">
       <div class="settings-lead">
@@ -8509,6 +8576,207 @@
   renderDealerSummary();
   renderVendorLedger();
   init();
+
+  // ---------------------------------------------------------------------
+  // Manager Review: the manager confirms or flags each entry the owner or
+  // team adds. Reviews live in their own collection (tracker_reviews), keyed
+  // "<collection>__<docId>", and carry a fingerprint of the entry. If the
+  // entry is edited later, the fingerprint no longer matches and it goes
+  // back to "waiting". Entries themselves are never changed by this tab.
+  // ---------------------------------------------------------------------
+  var rvReviews = {}, rvSince = "2026-10-23", rvRendering = false, rvTimer = null;
+  var RV_ROLE = (function () { try { return localStorage.getItem("emrTrackerAuthRole") || "admin"; } catch (e) { return "admin"; } })();
+  function rvIsManager() { var r = document.documentElement.getAttribute("data-role"); return (r || RV_ROLE) === "manager"; }
+  var RV_SECTIONS = [
+    { key: "cashbook", coll: "tracker_cashbook", label: "Cash Book",
+      rows: function () { return (cashDocs || []).filter(function (r) { return r.kind === "line"; }); },
+      desc: function (r) { return (r.book || "") + " book · " + (r.dir === "in" ? "In" : "Out") + " · " + (r.type || "").replace(/_/g, " ") + " — " + (r.party || "") + (r.notes ? " (" + r.notes + ")" : ""); },
+      amt: function (r) { return (r.dir === "in" ? 1 : -1) * (Number(r.amount) || 0); } },
+    { key: "sales", coll: "tracker_sales", label: "Sales",
+      rows: function () { return salesDocsRaw || []; },
+      desc: function (r) { return [r.dealer, r.product, (r.quantity ? r.quantity + " " + (r.unit || "") : ""), r.invoiceNo ? "Inv " + r.invoiceNo : "", r.officer ? "SO " + r.officer : "", r.company].filter(Boolean).join(" · "); },
+      amt: function (r) { return Number(r.value) || 0; } },
+    { key: "receipts", coll: "tracker_receipts", label: "Receipts",
+      rows: function () { return (receiptDocsOld || []).concat(receiptDocsNew || []); },
+      desc: function (r) { return [r.dealer, r.officer ? "SO " + r.officer : "", r.company, r.invoiceNo, r.notes].filter(Boolean).join(" · "); },
+      amt: function (r) { return Number(r.amount) || 0; } },
+    { key: "purchases", coll: "tracker_purchases", label: "Purchases",
+      rows: function () { return purchaseDocsRaw || []; },
+      desc: function (r) { return [r.supplier, r.product, (r.quantity ? r.quantity + " " + (r.unit || "") : ""), r.rate ? "rate " + inr(r.rate) : "", r.notes].filter(Boolean).join(" · "); },
+      amt: function (r) { return Number(r.value) || 0; } },
+    { key: "payments", coll: "tracker_payments", label: "Payments",
+      rows: function () { return paymentDocsRaw || []; },
+      desc: function (r) { return [r.supplier, r.mode, r.invoiceNo, r.notes].filter(Boolean).join(" · "); },
+      amt: function (r) { return Number(r.amount) || 0; } },
+    { key: "expenses", coll: "tracker_expenses", label: "Expenses",
+      rows: function () { return expenseDocsRaw || []; },
+      desc: function (r) { return [r.branch, r.category, r.paidTo, r.mode, r.notes].filter(Boolean).join(" · "); },
+      amt: function (r) { return Number(r.amount) || 0; } },
+    { key: "production", coll: "tracker_production", label: "Production",
+      rows: function () { return productionDocsRaw || []; },
+      desc: function (r) { return [r.product, r.company, r.outputMT ? r.outputMT + " MT" : "", r.rate ? "rate " + inr(r.rate) : "", r.notes].filter(Boolean).join(" · "); },
+      amt: function (r) { return Number(r.revenue) || 0; } },
+    { key: "officerpay", coll: "tracker_officerPay", label: "Officer pay",
+      rows: function () { return opDocsRaw || []; },
+      desc: function (r) { return [r.officer, "salary " + inr(r.salary || 0), r.incentive ? "incentive " + inr(r.incentive) : "", r.notes].filter(Boolean).join(" · "); },
+      amt: function (r) { return (Number(r.salary) || 0) + (Number(r.incentive) || 0); } }
+  ];
+  function rvFingerprint(r) {
+    var keys = Object.keys(r).filter(function (k) { return k !== "id" && k !== "updatedAt" && k !== "createdAt"; }).sort();
+    var str = keys.map(function (k) { return k + "=" + JSON.stringify(r[k]); }).join("|");
+    var h = 5381; for (var i = 0; i < str.length; i++) { h = ((h << 5) + h + str.charCodeAt(i)) | 0; }
+    return (h >>> 0).toString(36);
+  }
+  function rvMadeOn(r) {
+    var t = r.createdAt || r.updatedAt || "";
+    if (t && typeof t === "object" && t.toDate) t = t.toDate().toISOString();
+    if (t) { var d = new Date(t); if (!isNaN(d)) return new Date(d.getTime() + 330 * 60000).toISOString().slice(0, 10); }
+    return r.date || r.month || "";
+  }
+  function rvCollectAll() {
+    var out = [];
+    RV_SECTIONS.forEach(function (sec) {
+      sec.rows().forEach(function (r) {
+        if (!r || !r.id) return;
+        if (rvMadeOn(r) < rvSince) return;
+        var key = sec.coll + "__" + r.id, rev = rvReviews[key], fp = rvFingerprint(r);
+        var status = "waiting";
+        if (rev && rev.fp === fp) status = rev.status === "flagged" ? "flagged" : "confirmed";
+        out.push({ sec: sec, r: r, key: key, fp: fp, rev: rev, status: status, date: r.date || r.month || "", stale: !!(rev && rev.fp !== fp) });
+      });
+    });
+    out.sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
+    return out;
+  }
+  function rvFilter(all) {
+    var sec = document.getElementById("rvSection").value, st = document.getElementById("rvStatus").value;
+    var from = document.getElementById("rvFrom").value, to = document.getElementById("rvTo").value;
+    var q = (document.getElementById("rvSearch").value || "").toLowerCase().trim();
+    return all.filter(function (x) {
+      if (sec !== "all" && x.sec.key !== sec) return false;
+      if (st !== "all" && x.status !== st) return false;
+      if (from && x.date < from) return false;
+      if (to && x.date > to) return false;
+      if (q && (x.sec.desc(x.r) + " " + x.sec.label).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+  var rvShown = [];
+  var rvDeferred = false;
+  function renderReview() {
+    if (!document.getElementById("rvTableWrap")) return;
+    // Don't redraw while the manager is typing a flag note; redraw after.
+    if (document.querySelector(".rv-flag-row")) { rvDeferred = true; return; }
+    rvDeferred = false;
+    var all = rvCollectAll();
+    var waiting = all.filter(function (x) { return x.status === "waiting"; }).length;
+    var flagged = all.filter(function (x) { return x.status === "flagged"; }).length;
+    var confirmed = all.length - waiting - flagged;
+    var badge = document.getElementById("rvBadge");
+    var badgeN = rvIsManager() ? waiting : flagged;
+    if (badge) { badge.hidden = badgeN === 0; badge.textContent = badgeN; }
+    document.getElementById("rvKpis").innerHTML =
+      '<div class="kpi"><div class="label">Waiting for review</div><div class="value">' + waiting + '</div></div>' +
+      '<div class="kpi"><div class="label">Flagged by manager</div><div class="value" style="color:var(--bad)">' + flagged + '</div></div>' +
+      '<div class="kpi"><div class="label">Confirmed</div><div class="value" style="color:var(--good)">' + confirmed + '</div></div>';
+    rvShown = rvFilter(all);
+    var mgr = rvIsManager(), LIMIT = 400;
+    if (!rvShown.length) {
+      document.getElementById("rvTableWrap").innerHTML = '<p class="muted" style="padding:18px">' + (all.length ? "Nothing matches these filters." : "No entries made since " + esc(rvSince) + " yet. New entries and uploads will appear here.") + '</p>';
+      return;
+    }
+    var html = '<table><thead><tr><th>Date</th><th>Section</th><th>Entry</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>';
+    rvShown.slice(0, LIMIT).forEach(function (x, i) {
+      var st = '<span class="rv-status ' + x.status + '">' + (x.status === "waiting" ? (x.stale ? "Changed — check again" : "Waiting") : x.status === "flagged" ? "Flagged" : "Confirmed") + '</span>';
+      if (x.rev && x.status !== "waiting") st += '<div class="muted" style="font-size:.72rem;margin-top:3px">' + esc(x.rev.by || "Manager") + ', ' + esc((x.rev.at || "").slice(0, 10)) + '</div>';
+      if (x.status === "flagged" && x.rev.note) st += '<div class="rv-note">' + esc(x.rev.note) + '</div>';
+      var act = "";
+      if (mgr) {
+        if (x.status !== "confirmed") act += '<button class="btn btn-primary" data-rv-ok="' + i + '">Confirm</button>';
+        if (x.status !== "flagged") act += '<button class="btn btn-ghost" data-rv-flag="' + i + '">Flag</button>';
+        if (x.status !== "waiting") act += '<button class="btn btn-ghost" data-rv-undo="' + i + '">Undo</button>';
+      } else if (x.status === "flagged") {
+        act += '<button class="btn btn-ghost" data-rv-undo="' + i + '" title="Use this after you have checked or corrected the entry">Send back for review</button>';
+      }
+      html += '<tr><td style="white-space:nowrap">' + esc(x.date) + '</td><td>' + esc(x.sec.label) + '</td><td style="min-width:240px">' + esc(x.sec.desc(x.r)) + '<div class="muted" style="font-size:.72rem">' + esc(x.r.source || "") + '</div></td><td class="num">' + inr(x.sec.amt(x.r)) + '</td><td>' + st + '</td><td><div class="rv-actions">' + act + '</div></td></tr>';
+    });
+    html += '</tbody></table>';
+    if (rvShown.length > LIMIT) html += '<p class="muted" style="padding:10px 14px">Showing the latest ' + LIMIT + ' of ' + rvShown.length + '. Narrow the dates or section to see the rest.</p>';
+    document.getElementById("rvTableWrap").innerHTML = html;
+  }
+  function rvScheduleRender() { clearTimeout(rvTimer); rvTimer = setTimeout(renderReview, 300); }
+  function rvWrite(x, status, note) {
+    var body = { coll: x.sec.coll, docId: x.r.id, section: x.sec.label, date: x.date, status: status, note: note || "", fp: x.fp, by: "Manager", at: new Date().toISOString() };
+    return db.collection("tracker_reviews").doc(x.key).set(body);
+  }
+  document.getElementById("rvTableWrap").addEventListener("click", function (e) {
+    var t = e.target.closest("button"); if (!t || !db) return;
+    if (t.hasAttribute("data-rv-ok")) {
+      var x = rvShown[Number(t.getAttribute("data-rv-ok"))]; t.disabled = true;
+      rvWrite(x, "confirmed").catch(function (err) { console.error(err); appAlert("Could not save — check the internet connection and try again."); t.disabled = false; });
+    } else if (t.hasAttribute("data-rv-flag")) {
+      var i = Number(t.getAttribute("data-rv-flag")), tr = t.closest("tr");
+      var old = document.querySelector(".rv-flag-row"); if (old) old.remove();
+      var fr = document.createElement("tr"); fr.className = "rv-flag-row";
+      fr.innerHTML = '<td colspan="6"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="rvFlagNote" placeholder="What is wrong? e.g. rate should be 3,950 / amount is 1,500 not 15,000" style="flex:1;min-width:220px"><button class="btn btn-primary" id="rvFlagSave">Save flag</button><button class="btn btn-ghost" id="rvFlagCancel">Cancel</button></div></td>';
+      tr.after(fr); document.getElementById("rvFlagNote").focus();
+      document.getElementById("rvFlagCancel").onclick = function () { fr.remove(); renderReview(); };
+      document.getElementById("rvFlagSave").onclick = function () {
+        var note = document.getElementById("rvFlagNote").value.trim();
+        if (!note) { appAlert("Write what is wrong so the owner can correct it."); return; }
+        this.disabled = true;
+        rvWrite(rvShown[i], "flagged", note).then(function () { fr.remove(); renderReview(); }).catch(function (err) { console.error(err); appAlert("Could not save — check the internet connection and try again."); });
+      };
+    } else if (t.hasAttribute("data-rv-undo")) {
+      var y = rvShown[Number(t.getAttribute("data-rv-undo"))]; t.disabled = true;
+      db.collection("tracker_reviews").doc(y.key).delete().catch(function (err) { console.error(err); t.disabled = false; });
+    }
+  });
+  document.getElementById("rvConfirmAll").addEventListener("click", function () {
+    var todo = rvShown.filter(function (x) { return x.status === "waiting"; });
+    if (!todo.length) { appAlert("Nothing waiting in this list."); return; }
+    appConfirm("Confirm all " + todo.length + " entries shown? Only do this after checking them.").then(function (ok) {
+      if (!ok) return;
+      var chunks = []; for (var k = 0; k < todo.length; k += 400) chunks.push(todo.slice(k, k + 400));
+      chunks.reduce(function (p, ch) {
+        return p.then(function () {
+          var b = db.batch(), at = new Date().toISOString();
+          ch.forEach(function (x) { b.set(db.collection("tracker_reviews").doc(x.key), { coll: x.sec.coll, docId: x.r.id, section: x.sec.label, date: x.date, status: "confirmed", note: "", fp: x.fp, by: "Manager", at: at }); });
+          return b.commit();
+        });
+      }, Promise.resolve()).catch(function (err) { console.error(err); appAlert("Some confirmations could not be saved — try again."); });
+    });
+  });
+  ["rvSection", "rvStatus", "rvFrom", "rvTo"].forEach(function (id) { document.getElementById(id).addEventListener("change", renderReview); });
+  document.getElementById("rvSearch").addEventListener("input", rvScheduleRender);
+  document.getElementById("rvSince").addEventListener("change", function () {
+    var v = this.value; if (!v || !db) return;
+    db.doc("tracker_syncMeta/review").set({ since: v, updatedAt: new Date().toISOString() }, { merge: true });
+  });
+  (function () {
+    var sel = document.getElementById("rvSection");
+    RV_SECTIONS.forEach(function (sec) { var o = document.createElement("option"); o.value = sec.key; o.textContent = sec.label; sel.appendChild(o); });
+    document.getElementById("rvSince").value = rvSince;
+  })();
+  window.emrOpenReviewTab = function () { var b = document.querySelector('.tab-btn[data-tab="review"]'); if (b) b.click(); };
+  // Re-render the review list whenever the tracker's data refreshes.
+  var rvOrigApply = applyFYFilterAndRenderAll;
+  applyFYFilterAndRenderAll = function () { var r = rvOrigApply.apply(this, arguments); rvScheduleRender(); return r; };
+  var rvOrigCash = renderCashBook;
+  renderCashBook = function () { var r = rvOrigCash.apply(this, arguments); rvScheduleRender(); return r; };
+  function rvStartListeners() {
+    if (!db) { setTimeout(rvStartListeners, 500); return; }
+    db.collection("tracker_reviews").onSnapshot(function (snap) {
+      rvReviews = {}; snap.docs.forEach(function (d) { rvReviews[d.id] = d.data(); });
+      rvScheduleRender();
+    }, function (e) { console.error("reviews sub error", e); });
+    db.doc("tracker_syncMeta/review").onSnapshot(function (snap) {
+      if (snap.exists && snap.data().since) { rvSince = snap.data().since; document.getElementById("rvSince").value = rvSince; }
+      rvScheduleRender();
+    }, function (e) { console.error("review settings sub error", e); });
+  }
+  rvStartListeners();
+  if (RV_ROLE === "manager") setTimeout(window.emrOpenReviewTab, 0);
 })();
 </script>
 
