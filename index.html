@@ -344,16 +344,18 @@
   .filter-summary-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -2px 0 14px; }
   .filter-summary-row .tag { font-size: 0.74rem; padding: 4px 10px; }
 
-  #salesPrintArea, #dealerLedgerPrintArea, #officerLedgerPrintArea { display: none; }
+  #salesPrintArea, #dealerLedgerPrintArea, #officerLedgerPrintArea, #vendorLedgerPrintArea, #vendorSummaryPrintArea { display: none; }
   @media print {
     body * { visibility: hidden; }
-    #salesPrintArea, #salesPrintArea *, #dealerLedgerPrintArea, #dealerLedgerPrintArea *, #officerLedgerPrintArea, #officerLedgerPrintArea * { visibility: visible; }
-    #salesPrintArea, #dealerLedgerPrintArea, #officerLedgerPrintArea { display: block; position: absolute; left: 0; top: 0; width: 100%; padding: 20px; }
-    #salesPrintArea h1, #dealerLedgerPrintArea h1, #officerLedgerPrintArea h1 { font-size: 1.25rem; margin: 0 0 4px; color: #000; }
-    #salesPrintArea .print-meta, #dealerLedgerPrintArea .print-meta, #officerLedgerPrintArea .print-meta { color: #444; font-size: 0.82rem; margin: 0 0 4px; }
-    #salesPrintArea .print-summary, #dealerLedgerPrintArea .print-summary, #officerLedgerPrintArea .print-summary { font-weight: 600; margin: 0 0 14px; color: #000; }
-    #salesPrintArea table, #dealerLedgerPrintArea table, #officerLedgerPrintArea table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
-    #salesPrintArea th, #salesPrintArea td, #dealerLedgerPrintArea th, #dealerLedgerPrintArea td, #officerLedgerPrintArea th, #officerLedgerPrintArea td { border: 1px solid #999; padding: 4px 6px; text-align: left; color: #000; }
+    .print-area-active, .print-area-active * { visibility: visible; }
+    .print-area-active { display: block !important; position: absolute; left: 0; top: 0; width: 100%; padding: 20px; }
+    .print-area-active h1 { font-size: 1.25rem; margin: 0 0 4px; color: #000; }
+    .print-area-active .print-meta { color: #444; font-size: 0.82rem; margin: 0 0 4px; }
+    .print-area-active .print-summary { font-weight: 600; margin: 0 0 14px; color: #000; }
+    .print-area-active table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
+    .print-area-active th, .print-area-active td { border: 1px solid #999; padding: 4px 6px; text-align: left; color: #000; }
+    .print-area-active td.num, .print-area-active th.num { text-align: right; }
+    .print-area-active tr.total-row td { font-weight: 700; }
     .no-print { display: none !important; }
   }
 
@@ -1487,7 +1489,13 @@
       <div class="card">
         <h2>Suppliers by closing balance</h2>
         <p class="hint">Every supplier&rsquo;s running account in one place &mdash; opening balance, total purchased, total paid, and the closing balance currently payable &mdash; sorted highest first. Opening balance is editable here too (All time view) and is shared with the Payments tab and the full statement below. Switch the financial year above to review a single year.</p>
+        <div class="filter-row" style="margin-bottom:10px;">
+          <button type="button" class="btn btn-ghost" id="vendorSummaryViewBtn">View / Print list</button>
+          <button type="button" class="btn btn-ghost" id="vendorSummaryDownloadBtn">Download as PDF</button>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--ink-2);"><input type="checkbox" id="vendorSummaryHideZero" checked> Leave out suppliers with zero balance</label>
+        </div>
         <div id="ledgerVendorSummaryWrap"></div>
+        <div id="vendorSummaryPrintArea"></div>
       </div>
 
       <div class="card">
@@ -2972,6 +2980,8 @@
   document.getElementById("vendorLedgerSearch").addEventListener("input", renderVendorLedger);
   document.getElementById("vendorLedgerViewBtn").addEventListener("click", viewVendorLedger);
   document.getElementById("vendorLedgerDownloadBtn").addEventListener("click", saveVendorLedgerPdf);
+  document.getElementById("vendorSummaryViewBtn").addEventListener("click", viewVendorSummary);
+  document.getElementById("vendorSummaryDownloadBtn").addEventListener("click", saveVendorSummaryPdf);
   document.getElementById("vendorLedgerFromDate").addEventListener("change", renderVendorLedger);
   document.getElementById("vendorLedgerToDate").addEventListener("change", renderVendorLedger);
   document.getElementById("vendorLedgerClearDates").addEventListener("click", function () {
@@ -3063,6 +3073,16 @@
     var norm = v / mag, niceNorm;
     if (norm <= 1) niceNorm = 1; else if (norm <= 2) niceNorm = 2; else if (norm <= 5) niceNorm = 5; else niceNorm = 10;
     return niceNorm * mag;
+  }
+  // Only one print area may be visible when the print dialog opens; marks the
+  // chosen one active (see @media print CSS) and clears the mark afterwards.
+  function printOnly(areaId) {
+    document.querySelectorAll(".print-area-active").forEach(function (el) { el.classList.remove("print-area-active"); });
+    var el = document.getElementById(areaId);
+    if (el) el.classList.add("print-area-active");
+    var done = function () { if (el) el.classList.remove("print-area-active"); window.removeEventListener("afterprint", done); };
+    window.addEventListener("afterprint", done);
+    window.print();
   }
   function truncate(s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
   var MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -3603,7 +3623,7 @@
     // silently with no error to detect, which is what the hint text below
     // calls out. Save as PDF (a guaranteed file download, not a print
     // dialog) is the fallback for exactly that case.
-    window.print();
+    printOnly("salesPrintArea");
   }
 
   // Builds an actual downloadable PDF (using jsPDF, loaded above) rather than
@@ -4439,7 +4459,7 @@
     var supplier = document.getElementById("ledgerVendorSelect").value;
     if (!supplier) { appAlert("Select a supplier first."); return; }
     buildVendorLedgerPrintReport();
-    window.print();
+    printOnly("vendorLedgerPrintArea");
   }
 
   function buildVendorLedgerPdfBlob() {
@@ -4522,6 +4542,136 @@
       return;
     }
     downloadsCap.save({ filename: "EMR-Supplier-Statement-" + slugify(supplier) + ".pdf", data: blob }).catch(function (err) {
+      console.error(err);
+    });
+  }
+
+  // ---------- suppliers by closing balance: view / print / download ----------
+  function getVendorSummaryForPrint() {
+    var hideZero = document.getElementById("vendorSummaryHideZero");
+    var rows = computeVendorLedgerRows();
+    if (hideZero && hideZero.checked) rows = rows.filter(function (r) { return Math.abs(r.closing) >= 0.5; });
+    var tot = { opening: 0, purchased: 0, paid: 0, closing: 0, payable: 0, advance: 0 };
+    rows.forEach(function (r) {
+      tot.opening += r.opening; tot.purchased += r.purchased; tot.paid += r.paid; tot.closing += r.closing;
+      if (r.closing > 0) tot.payable += r.closing; else tot.advance += -r.closing;
+    });
+    return {
+      rows: rows,
+      tot: tot,
+      isAllTime: currentFY === "all",
+      periodLabel: currentFY === "all" ? "All time" : (fyLabel(currentFY) + " (1 Apr " + currentFY + " – 31 Mar " + (currentFY + 1) + ")"),
+      hideZero: !!(hideZero && hideZero.checked)
+    };
+  }
+
+  function viewVendorSummary() {
+    var wrap = document.getElementById("vendorSummaryPrintArea");
+    if (!wrap) return;
+    var d = getVendorSummaryForPrint();
+    if (!d.rows.length) { appAlert("No suppliers to print for this period."); return; }
+    var openingHeader = d.isAllTime ? "Opening" : "Balance b/f";
+    var html = "<h1>EMR Suppliers by Closing Balance</h1>" +
+      '<p class="print-meta">Generated ' + esc(fmtDate(todayISO())) + " &middot; Period: " + esc(d.periodLabel) + " &middot; " + d.rows.length + " supplier" + (d.rows.length === 1 ? "" : "s") + (d.hideZero ? " (zero balances left out)" : "") + "</p>" +
+      '<p class="print-summary">Total payable: ' + inr(d.tot.payable) + (d.tot.advance ? " &middot; Advance paid: " + inr(d.tot.advance) : "") + " &middot; Net closing balance: " + inr(d.tot.closing) + "</p>" +
+      '<table><thead><tr><th>#</th><th>Supplier</th><th class="num">' + openingHeader + '</th><th class="num">Purchased</th><th class="num">Paid</th><th class="num">Closing balance</th></tr></thead><tbody>';
+    d.rows.forEach(function (r, i) {
+      html += "<tr><td>" + (i + 1) + "</td><td>" + esc(r.supplier) + '</td><td class="num">' + inr(r.opening) + '</td><td class="num">' + inr(r.purchased) +
+        '</td><td class="num">' + inr(r.paid) + '</td><td class="num">' + inr(r.closing) + "</td></tr>";
+    });
+    html += '<tr class="total-row"><td></td><td>Total</td><td class="num">' + inr(d.tot.opening) + '</td><td class="num">' + inr(d.tot.purchased) +
+      '</td><td class="num">' + inr(d.tot.paid) + '</td><td class="num">' + inr(d.tot.closing) + "</td></tr></tbody></table>";
+    wrap.innerHTML = html;
+    printOnly("vendorSummaryPrintArea");
+  }
+
+  function buildVendorSummaryPdfBlob() {
+    if (typeof window.jspdf === "undefined" || !window.jspdf.jsPDF) return null;
+    var d = getVendorSummaryForPrint();
+    var doc = new window.jspdf.jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    var pageH = doc.internal.pageSize.getHeight();
+    var marginX = 14, marginBottom = 16;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("EMR Suppliers by Closing Balance", marginX, 16);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(90);
+    doc.text("Generated " + fmtDate(todayISO()) + "  ·  Period: " + d.periodLabel, marginX, 23);
+    doc.text(d.rows.length + " supplier" + (d.rows.length === 1 ? "" : "s") + (d.hideZero ? " (zero balances left out)" : "") + "  ·  Sorted by closing balance, highest first", marginX, 28);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0);
+    doc.text("Total payable: " + inrPdf(d.tot.payable) + (d.tot.advance ? "   Advance paid: " + inrPdf(d.tot.advance) : "") + "   Net closing balance: " + inrPdf(d.tot.closing), marginX, 35);
+
+    // widths sum to 182mm (A4 portrait minus 14mm margins)
+    var cols = [
+      { label: "#", w: 9, align: "left", get: function (r, i) { return String(i + 1); } },
+      { label: "Supplier", w: 61, align: "left", get: function (r) { return truncate(r.supplier, 42); } },
+      { label: d.isAllTime ? "Opening" : "Balance b/f", w: 28, align: "right", get: function (r) { return inrPdf(r.opening); } },
+      { label: "Purchased", w: 28, align: "right", get: function (r) { return inrPdf(r.purchased); } },
+      { label: "Paid", w: 28, align: "right", get: function (r) { return inrPdf(r.paid); } },
+      { label: "Closing balance", w: 28, align: "right", get: function (r) { return inrPdf(r.closing); } }
+    ];
+    var tableW = cols.reduce(function (s, c) { return s + c.w; }, 0);
+    var rowH = 6.5;
+
+    function drawCells(vals, y) {
+      var x = marginX;
+      cols.forEach(function (c, ci) {
+        if (c.align === "right") doc.text(vals[ci], x + c.w - 1.5, y, { align: "right" });
+        else doc.text(vals[ci], x + 1.5, y);
+        x += c.w;
+      });
+    }
+    function drawHeader(y) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setFillColor(230, 235, 228);
+      doc.rect(marginX, y - 4.5, tableW, rowH, "F");
+      drawCells(cols.map(function (c) { return c.label; }), y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      return y + rowH;
+    }
+
+    var y = drawHeader(44);
+    d.rows.forEach(function (r, i) {
+      if (y > pageH - marginBottom) { doc.addPage(); y = drawHeader(16); }
+      if (i % 2 === 1) { doc.setFillColor(246, 247, 245); doc.rect(marginX, y - 4.5, tableW, rowH, "F"); }
+      drawCells(cols.map(function (c) { return c.get(r, i); }), y);
+      y += rowH;
+    });
+    if (y > pageH - marginBottom) { doc.addPage(); y = drawHeader(16); }
+    doc.setDrawColor(120);
+    doc.line(marginX, y - 4.5, marginX + tableW, y - 4.5);
+    doc.setFont("helvetica", "bold");
+    drawCells(["", "Total", inrPdf(d.tot.opening), inrPdf(d.tot.purchased), inrPdf(d.tot.paid), inrPdf(d.tot.closing)], y);
+
+    var pages = doc.internal.getNumberOfPages();
+    for (var p = 1; p <= pages; p++) {
+      doc.setPage(p);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(120);
+      doc.text("Page " + p + " of " + pages, marginX + tableW, pageH - 8, { align: "right" });
+    }
+    return doc.output("blob");
+  }
+
+  function saveVendorSummaryPdf() {
+    if (!getVendorSummaryForPrint().rows.length) { appAlert("No suppliers to include for this period."); return; }
+    if (!downloadsCap) {
+      appAlert("File downloads aren't available in this view right now — try View / Print list instead.");
+      return;
+    }
+    var blob = buildVendorSummaryPdfBlob();
+    if (!blob) {
+      appAlert("The PDF tool hasn't finished loading yet — please wait a moment and try again.");
+      return;
+    }
+    var suffix = currentFY === "all" ? "All-time" : fyLabel(currentFY).replace(/[^A-Za-z0-9-]+/g, "-");
+    downloadsCap.save({ filename: "EMR-Suppliers-Closing-Balance-" + suffix + "-" + todayISO() + ".pdf", data: blob }).catch(function (err) {
       console.error(err);
     });
   }
@@ -6984,7 +7134,7 @@
     // native print dialog, whose preview pane doubles as an on-screen "view"
     // of the formatted statement — the viewer can cancel out of it without
     // printing anything, or choose "Save as PDF" there themselves.
-    window.print();
+    printOnly("dealerLedgerPrintArea");
   }
 
   function buildDealerLedgerPdfBlob() {
@@ -7354,7 +7504,7 @@
     var officer = document.getElementById("ledgerOfficerSelect").value;
     if (!officer) { appAlert("Select a sales officer first."); return; }
     buildOfficerLedgerPrintReport();
-    window.print();
+    printOnly("officerLedgerPrintArea");
   }
 
   function buildOfficerLedgerPdfBlob() {
