@@ -131,6 +131,7 @@ li:first-child{border-top:0}
     </div>
     <button class="btn" id="save" type="submit">Submit</button>
     <p class="msg" id="msg" role="status"></p>
+    <button class="btn ghost" id="myPdf" type="button" hidden style="width:100%;padding:11px">Download my details as PDF</button>
     <div id="waBox" hidden>
       <p class="hint">Problem saving? Send your details on WhatsApp instead:</p>
       <a class="btn wa" id="wa" href="#" target="_blank" rel="noopener">Send on WhatsApp</a>
@@ -234,6 +235,21 @@ $("adminOff").addEventListener("click",()=>setAdmin(false));
 try{if(sessionStorage.getItem("emrShirtAdmin")==="1")setTimeout(()=>setAdmin(true));}catch(_){}
 function adminHash(){if(location.hash==="#admin"&&!admin){$("adminForm").hidden=false;$("adminOpen").hidden=true;$("adminBar").scrollIntoView({behavior:"smooth"});$("adminPin").focus();}}
 window.addEventListener("hashchange",adminHash);setTimeout(adminHash,300);
+let lastSaved=null;
+$("myPdf").addEventListener("click",()=>{
+  if(!lastSaved)return;
+  try{
+    const {jsPDF}=window.jspdf;const d=new jsPDF({unit:"mm",format:"a5"});const r=lastSaved;
+    d.setFillColor(47,74,52);d.rect(0,0,148,22,"F");d.setTextColor(243,246,236);
+    d.setFont("helvetica","bold");d.setFontSize(15);d.text("EMR Groups - Staff Uniform",12,14);
+    d.setTextColor(20,20,20);d.setFont("helvetica","normal");d.setFontSize(10);
+    d.text("Submitted: "+new Date(r.at).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"}),12,32);
+    const body=[["Name",r.name],["Place",r.plant],["Gender",r.gender]].concat(r.gender==="Female"?[["Item",r.item]]:[["Shirt size",r.size+" ("+(SIZES.find(x=>x[0]===r.size)||["",""])[1].replace("–","-")+'" chest)'],["Sleeve",r.sleeve+" sleeve"]]);
+    d.autoTable({startY:38,body,theme:"grid",styles:{fontSize:12,cellPadding:4},columnStyles:{0:{fontStyle:"bold",cellWidth:38,fillColor:[244,231,210]}},margin:{left:12,right:12}});
+    d.setFontSize(9);d.setTextColor(110,110,110);d.text("To change your details, open the survey link again and submit with the same name.",12,d.lastAutoTable.finalY+10);
+    d.save("Uniform_"+r.name.replace(/[^A-Za-z0-9]+/g,"_")+".pdf");
+  }catch(err){say("Could not create the PDF. Please reload the page and try again.","err");}
+});
 let pendingDel=null;
 $("list").addEventListener("click",async e=>{
   const dl=e.target.dataset.del;
@@ -260,6 +276,7 @@ $("form").addEventListener("submit",async e=>{
     await db.collection(COL).doc(slug(name)).set(gender==="Female"?{kind:KIND,name,plant:$("plant").value,gender,item,at:new Date().toISOString()}:{kind:KIND,name,plant:$("plant").value,gender,size,sleeve,at:new Date().toISOString()});
     say(`Saved: ${name} · ${gender==="Female"?item:size+" · "+sleeve+" sleeve"}. Thank you!`,"ok");
     try{localStorage.setItem("emrShirtName",name);}catch(_){}
+    lastSaved=gender==="Female"?{name,plant:$("plant").value,gender,item,at:new Date().toISOString()}:{name,plant:$("plant").value,gender,size,sleeve,at:new Date().toISOString()};$("myPdf").hidden=false;
   }catch(err){say("Could not save. Check your internet and try again, or use WhatsApp below.","err");$("waBox").hidden=false;}
   $("save").disabled=false;
 });
