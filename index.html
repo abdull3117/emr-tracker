@@ -1176,8 +1176,8 @@
         <div id="atDayList"></div>
       </div>
       <div class="card">
-        <h2>Factory crew (from Batch Book)</h2>
-        <p class="hint">Operators and loadmen present each day, entered by the supervisors in Batch Book&rsquo;s Attendance tab.</p>
+        <h2>Operators &amp; loadmen &mdash; Batch Book check</h2>
+        <p class="hint">Enter the crew in Batch Book&rsquo;s Attendance tab or mark each operator and loadman by name above &mdash; either works. Any day where the two disagree is flagged here.</p>
         <div id="atCrew"></div>
       </div>
     </div>
@@ -1193,7 +1193,7 @@
       <p class="hint">Started from the Sep&rsquo;26 salary sheet. Add new staff here or mark someone as left.</p>
       <form class="entry-form" id="atStaffForm">
         <div class="field"><label for="atSName">Name</label><input id="atSName" required></div>
-        <div class="field"><label for="atSRole">Role</label><input id="atSRole" placeholder="e.g. Supervisor, Watchman"></div>
+        <div class="field"><label for="atSRole">Role</label><input id="atSRole" placeholder="e.g. Operator, Loadman, Supervisor" list="atRoleList"><datalist id="atRoleList"><option>Operator</option><option>Loadman</option><option>Supervisor</option><option>Watchman</option></datalist></div>
         <div class="field"><label for="atSFactory">Works at</label><select id="atSFactory"><option>Orathur</option><option>Vikravandi</option></select></div>
         <div class="field"><label for="atSBasic">Monthly basic (&#8377;)</label><input type="number" min="0" step="any" id="atSBasic" required></div>
         <div class="field"><button type="submit" class="btn btn-primary">Add staff</button></div>
@@ -5707,23 +5707,59 @@
     dl.querySelectorAll("[data-at-p]").forEach(function (b) { b.addEventListener("click", function () { var cur = atMark(date, b.getAttribute("data-at-p")); var v = b.getAttribute("data-at-v"); atSetMark(date, b.getAttribute("data-at-p"), cur === v ? "" : v); }); });
     renderAtCrew(); renderAtRegister(); renderAtStaffList();
   }
+  // Operators and loadmen can be marked by name above (role "Operator" or
+  // "Loadman" in the staff list) and/or entered as day totals in Batch Book.
+  // Either is fine; this table cross-checks the two and flags differences.
+  function crewRoleOf(p) { var r = String((p && p.role) || ""); return /operator/i.test(r) ? "op" : (/load/i.test(r) ? "ld" : ""); }
+  function atCrewFromMarks(date, f) {
+    var marks = ((staffAtt[date.slice(0, 7)] || {})[date]) || {}, op = 0, ld = 0, any = false;
+    staffRoster.forEach(function (p) {
+      var role = crewRoleOf(p); if (!role || (p.factory || "Orathur") !== f) return;
+      var v = marks[p.id]; if (!v) return; any = true;
+      var n = v === "P" ? 1 : (v === "H" ? 0.5 : 0);
+      if (role === "op") op += n; else ld += n;
+    });
+    return any ? { o: op, l: ld } : null;
+  }
   function renderAtCrew() {
     var wrap = document.getElementById("atCrew"); if (!wrap) return;
     var m = (document.getElementById("atMonth").value || atSelDate().slice(0, 7));
-    var rows = crewDocs.filter(function (d) { return String(d.date || "").slice(0, 7) === m; });
-    if (!rows.length) { wrap.innerHTML = '<div class="empty-state">No crew attendance entered in Batch Book for ' + esc(monthLabel(m)) + ' yet.</div>'; return; }
-    var by = {};
-    rows.forEach(function (d) { var f = d.factory || "Orathur"; by[d.date] = by[d.date] || {}; by[d.date][f] = d; });
-    var tot = { Orathur: { o: 0, l: 0, n: 0 }, Vikravandi: { o: 0, l: 0, n: 0 } };
-    var html = '<div class="table-wrap" style="max-height:340px;overflow:auto;"><table><thead><tr><th>Date</th><th class="num">Orathur op.</th><th class="num">Orathur loadmen</th><th class="num">Vikravandi op.</th><th class="num">Vikravandi loadmen</th></tr></thead><tbody>';
-    Object.keys(by).sort().reverse().forEach(function (d) {
-      var o = by[d].Orathur, v = by[d].Vikravandi;
-      if (o) { tot.Orathur.o += +o.operators || 0; tot.Orathur.l += +o.loadmen || 0; tot.Orathur.n++; }
-      if (v) { tot.Vikravandi.o += +v.operators || 0; tot.Vikravandi.l += +v.loadmen || 0; tot.Vikravandi.n++; }
-      html += '<tr><td>' + esc(fmtDate(d)) + '</td><td class="num">' + (o ? o.operators : "&ndash;") + '</td><td class="num">' + (o ? o.loadmen : "&ndash;") + '</td><td class="num">' + (v ? v.operators : "&ndash;") + '</td><td class="num">' + (v ? v.loadmen : "&ndash;") + '</td></tr>';
+    atLoadMonth(m);
+    var F = ["Orathur", "Vikravandi"];
+    var named = {}; F.forEach(function (f) { named[f] = staffRoster.some(function (p) { return crewRoleOf(p) && (p.factory || "Orathur") === f; }); });
+    var bb = {};
+    crewDocs.forEach(function (d) { if (String(d.date || "").slice(0, 7) !== m) return; var f = d.factory || "Orathur"; bb[d.date] = bb[d.date] || {}; bb[d.date][f] = d; });
+    var dates = {}; Object.keys(bb).forEach(function (d) { dates[d] = 1; });
+    Object.keys(staffAtt[m] || {}).forEach(function (d) { dates[d] = 1; });
+    var list = Object.keys(dates).sort().reverse();
+    var bad = 0, onlyAt = 0, onlyBb = 0, rowsHtml = "", tot = { Orathur: { o: 0, l: 0 }, Vikravandi: { o: 0, l: 0 } };
+    function cell(x) { return x == null ? "&ndash;" : x; }
+    list.forEach(function (d) {
+      var cells = "", show = false;
+      F.forEach(function (f) {
+        var b = bb[d] && bb[d][f], t = atCrewFromMarks(d, f), st = "";
+        if (b) { tot[f].o += +b.operators || 0; tot[f].l += +b.loadmen || 0; show = true; }
+        if (t) show = true;
+        if (b && t) {
+          if ((+b.operators || 0) === t.o && (+b.loadmen || 0) === t.l) st = '<span class="cb-ok">✓</span>';
+          else { st = '<span class="cb-warn" style="font-weight:700;">⚠ Mismatch</span>'; bad++; }
+        } else if (t) { st = '<span class="cb-warn" style="font-weight:700;">Not in Batch Book</span>'; onlyAt++; }
+        else if (b && named[f]) { st = '<span class="muted">Not marked here</span>'; onlyBb++; }
+        cells += '<td class="num">' + cell(b ? b.operators : null) + ' / ' + cell(b ? b.loadmen : null) + '</td>' +
+          (named[f] ? '<td class="num">' + cell(t ? t.o : null) + ' / ' + cell(t ? t.l : null) + '</td><td>' + st + '</td>' : '');
+      });
+      if (show) rowsHtml += '<tr><td>' + esc(fmtDate(d)) + '</td>' + cells + '</tr>';
     });
-    html += '<tr style="font-weight:700;border-top:2px solid var(--border);"><td>Man-days</td><td class="num">' + tot.Orathur.o + '</td><td class="num">' + tot.Orathur.l + '</td><td class="num">' + tot.Vikravandi.o + '</td><td class="num">' + tot.Vikravandi.l + '</td></tr></tbody></table></div>';
-    wrap.innerHTML = html;
+    if (!rowsHtml) { wrap.innerHTML = '<div class="empty-state">No operator or loadman attendance for ' + esc(monthLabel(m)) + ' yet &mdash; enter it in Batch Book or mark them by name above.</div>'; return; }
+    var head = '<tr><th>Date</th>' + F.map(function (f) { return '<th class="num">' + f + ' Batch Book<div class="muted">op. / loadmen</div></th>' + (named[f] ? '<th class="num">' + f + ' marked here<div class="muted">op. / loadmen</div></th><th>' + f + ' check</th>' : ''); }).join("") + '</tr>';
+    var note = '';
+    if (bad || onlyAt) note = '<p class="cb-warn" style="font-weight:700;margin:0 0 8px;">' +
+      (bad ? bad + ' day' + (bad === 1 ? '' : 's') + ' where Batch Book and this attendance don&rsquo;t match. ' : '') +
+      (onlyAt ? onlyAt + ' day' + (onlyAt === 1 ? '' : 's') + ' marked here but not saved in Batch Book (it pre-fills from here &mdash; the supervisor just taps Save attendance).' : '') + '</p>';
+    else if (F.some(function (f) { return named[f]; })) note = '<p class="cb-ok" style="margin:0 0 8px;">Batch Book and this attendance agree on every day both have.</p>';
+    if (!F.some(function (f) { return named[f]; })) note = '<p class="muted" style="margin:0 0 8px;font-size:.82rem;">To cross-check, add operators and loadmen to the Staff list with role <strong>Operator</strong> or <strong>Loadman</strong> and mark them above.</p>';
+    wrap.innerHTML = note + '<div class="table-wrap" style="max-height:340px;overflow:auto;"><table><thead>' + head + '</thead><tbody>' + rowsHtml +
+      '<tr style="font-weight:700;border-top:2px solid var(--border);"><td>Man-days (Batch Book)</td>' + F.map(function (f) { return '<td class="num">' + tot[f].o + ' / ' + tot[f].l + '</td>' + (named[f] ? '<td></td><td></td>' : ''); }).join("") + '</tr></tbody></table></div>';
   }
   function atSheetFor(m, name) {
     var mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m.slice(5, 7) - 1] + "'" + m.slice(2, 4);
