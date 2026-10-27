@@ -146,6 +146,7 @@ li:first-child{border-top:0}
     <p class="hint" style="margin:14px 0 8px">Women</p>
     <div class="tally ftally" id="ftally"></div>
     <button class="btn" id="pdfBtn" type="button" style="margin-top:12px" hidden>Download PDF report</button>
+    <button class="btn ghost" id="oldBtn" type="button" style="margin-top:8px;width:100%;color:var(--danger);border-color:var(--danger)" hidden>Delete old letter-size entries</button>
   </section>
 
   <section class="card">
@@ -183,7 +184,7 @@ function updateWa(){const t=`Staff uniform\nName: ${$("name").value.trim()||"-"}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function say(t,k){$("msg").textContent=t;$("msg").className="msg "+(k||"");}
 
-function render(){
+function render(){if(typeof paintOld==="function")setTimeout(paintOld);
   const shirts=rows.filter(r=>!isF(r)),women=rows.filter(isF);
   const count={};SIZES.forEach(([s])=>count[s]={t:0,Half:0,Full:0});let H=0,F=0;shirts.forEach(r=>{const c=count[r.size];if(c){c.t++;if(r.sleeve==="Half"){c.Half++;H++;}else if(r.sleeve==="Full"){c.Full++;F++;}}});
   $("tally").innerHTML=SIZES.map(([s])=>`<div><b>${count[s].t}</b><span>${s}</span><em>H ${count[s].Half} · F ${count[s].Full}</em></div>`).join("");
@@ -231,6 +232,16 @@ $("pdfBtn").addEventListener("click",()=>{
     d.autoTable({startY:d.lastAutoTable.finalY+15,head:[["#","Name","Place","Gender","Item / Size","Sleeve"]],body:list.map((r,i)=>[i+1,r.name,r.plant,r.gender||"Male",isF(r)?r.item:"Shirt "+r.size,isF(r)?"-":(r.sleeve||"-")]),theme:"striped",headStyles:{fillColor:[47,74,52]},columnStyles:{0:{cellWidth:10}}});
     d.save("Staff_Uniform_"+new Date().toISOString().slice(0,10)+".pdf");
   }catch(err){say("Could not create the PDF. Please reload the page and try again.","err");}
+});
+const oldRows=()=>rows.filter(r=>!isF(r)&&!SIZES.some(x=>x[0]===r.size));
+let oldArmed=false;
+function paintOld(){const n=oldRows().length;$("oldBtn").hidden=!admin||!n;$("oldBtn").textContent=oldArmed?`Tap again to delete ${n} old entr${n===1?"y":"ies"}`:`Delete old letter-size entries (${n})`;}
+$("oldBtn").addEventListener("click",async()=>{
+  if(!admin)return;
+  if(!oldArmed){oldArmed=true;paintOld();setTimeout(()=>{oldArmed=false;paintOld();},4000);return;}
+  oldArmed=false;const list=oldRows();let done=0;
+  for(const r of list){try{await db.collection(COL).doc(r.id).delete();done++;}catch(_){}}
+  say(done===list.length?`Deleted ${done} old letter-size entr${done===1?"y":"ies"}.`:`Deleted ${done} of ${list.length}. Please try again for the rest.`,done===list.length?"ok":"err");
 });
 $("adminOff").addEventListener("click",()=>setAdmin(false));
 try{if(sessionStorage.getItem("emrShirtAdmin")==="1")setTimeout(()=>setAdmin(true));}catch(_){}
