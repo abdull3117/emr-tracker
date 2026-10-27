@@ -33,7 +33,7 @@ h1,h2{font-family:var(--display);margin:0;text-wrap:balance}
 label{display:block;font-size:.82rem;font-weight:600;color:var(--soft);margin-bottom:6px}
 input,select{font:inherit;font-size:1rem;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px;width:100%}
 .field{margin-bottom:16px}
-.sizes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.sizes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .sleeves{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .sleeves .size b{font-size:1rem}
 .size{font:inherit;border:1.5px solid var(--line);background:var(--bg);color:var(--fg);border-radius:10px;padding:10px 4px;cursor:pointer;text-align:center}
@@ -48,14 +48,14 @@ input,select{font:inherit;font-size:1rem;color:var(--fg);background:var(--bg);bo
 .msg{font-size:.88rem;margin-top:10px;min-height:1.3em}
 .msg.ok{color:var(--ok)} .msg.err{color:var(--danger)}
 .hint{font-size:.8rem;color:var(--faint);margin-top:8px}
-.tally{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;text-align:center}
+.tally{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;text-align:center}
 .ftally{grid-template-columns:repeat(2,1fr)!important}
 .tally div{background:var(--bg);border-radius:9px;padding:8px 2px}
 .tally b{display:block;font-family:var(--display);font-size:1.4rem;font-variant-numeric:tabular-nums}
 .tally span{font-size:.75rem;color:var(--soft)}
 .tally em{display:block;font-style:normal;font-size:.7rem;color:var(--faint);font-variant-numeric:tabular-nums}
 .total{font-size:.88rem;color:var(--soft);margin:10px 0 0}
-@media (max-width:420px){.tally{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:520px){.tally{grid-template-columns:repeat(4,1fr)}}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .filters select{width:auto;padding:6px 10px;font-size:.88rem}
 ul{list-style:none;margin:0;padding:0}
@@ -117,9 +117,9 @@ li:first-child{border-top:0}
     </div>
     <div id="maleBox" hidden>
     <div class="field">
-      <label id="sizeLabel">Shirt size (chest, inches)</label>
+      <label id="sizeLabel">Shirt size <span style="color:var(--danger)">*</span></label>
       <div class="sizes" id="sizes" role="group" aria-labelledby="sizeLabel"></div>
-      <p class="hint">Not sure? Measure around your chest, or check the size tag on a shirt that fits you well.</p>
+      <p class="hint">The size number on your shirt collar tag (chest in inches). Not sure? Check a shirt that fits you well.</p>
     </div>
     <div class="field">
       <label id="sleeveLabel">Sleeve <span style="color:var(--danger)">*</span></label>
@@ -165,12 +165,12 @@ li:first-child{border-top:0}
 </div>
 
 <script>
-const SIZES=[["S","36–38"],["M","38–40"],["L","40–42"],["XL","42–44"],["XXL","44–46"],["3XL","46–48"]];
+const SIZES=[["36","S"],["38","M"],["40","L"],["42","XL"],["44","XXL"],["46","3XL"],["48","4XL"]];
 const WA_NUMBER="919952439559";
 const $=id=>document.getElementById(id);
 let gender="", item="", size="", sleeve="", rows=[], db=null, myId=null, admin=false, editingId=null;
 
-$("sizes").innerHTML=SIZES.map(([s,c])=>`<button type="button" class="size" data-s="${s}" aria-pressed="false"><b>${s}</b><small>${c}"</small></button>`).join("");
+$("sizes").innerHTML=SIZES.map(([s,c])=>`<button type="button" class="size" data-s="${s}" aria-pressed="false"><b>${s}</b><small>${c}</small></button>`).join("");
 $("fSize").innerHTML+=SIZES.map(([s])=>`<option>${s}</option>`).join("");
 $("sizes").addEventListener("click",e=>{const b=e.target.closest(".size");if(!b)return;size=b.dataset.s;paintSizes();updateWa();});
 $("genders").addEventListener("click",e=>{const b=e.target.closest(".size");if(!b)return;gender=b.dataset.g;paintSizes();updateWa();});
@@ -188,6 +188,7 @@ function render(){
   const count={};SIZES.forEach(([s])=>count[s]={t:0,Half:0,Full:0});let H=0,F=0;shirts.forEach(r=>{const c=count[r.size];if(c){c.t++;if(r.sleeve==="Half"){c.Half++;H++;}else if(r.sleeve==="Full"){c.Full++;F++;}}});
   $("tally").innerHTML=SIZES.map(([s])=>`<div><b>${count[s].t}</b><span>${s}</span><em>H ${count[s].Half} · F ${count[s].Full}</em></div>`).join("");
   $("total").textContent=rows.length?`${shirts.length} shirt${shirts.length===1?"":"s"} · ${H} half sleeve · ${F} full sleeve`:"No entries yet.";
+  const old=shirts.filter(r=>!count[r.size]).length;if(old)$("total").textContent+=` · ${old} entr${old===1?"y uses an":"ies use"} old letter size (S/M/L) — ask them to submit again with the number size`;
   const dm=women.filter(r=>r.item==="Dress material").length,sa=women.filter(r=>r.item==="Saree").length;
   $("ftally").innerHTML=`<div><b>${dm}</b><span>Dress material</span></div><div><b>${sa}</b><span>Saree</span></div>`;
   const plants=[...new Set(rows.map(r=>r.plant).filter(Boolean))].sort();
@@ -216,10 +217,10 @@ $("pdfBtn").addEventListener("click",()=>{
     const now=new Date().toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
     d.setFont("helvetica","bold");d.setFontSize(16);d.text("EMR Groups - Staff Uniform Order",14,18);const shirts=rows.filter(r=>!isF(r)),women=rows.filter(isF);
     d.setFont("helvetica","normal");d.setFontSize(10);d.text("Generated: "+now+"   |   Men (shirts): "+shirts.length+"   |   Women: "+women.length,14,25);
-    const body=SIZES.map(([s,c])=>{const r=shirts.filter(x=>x.size===s);const h=r.filter(x=>x.sleeve==="Half").length,f=r.filter(x=>x.sleeve==="Full").length;return [s,c.replace("–","-")+'"',h,f,r.length];});
+    const body=SIZES.map(([s,c])=>{const r=shirts.filter(x=>x.size===s);const h=r.filter(x=>x.sleeve==="Half").length,f=r.filter(x=>x.sleeve==="Full").length;return [s+'"',c,h,f,r.length];});
     const H=shirts.filter(x=>x.sleeve==="Half").length,F=shirts.filter(x=>x.sleeve==="Full").length;
     d.setFont("helvetica","bold");d.setFontSize(12);d.text("Men - shirts",14,33);
-    d.autoTable({startY:36,head:[["Size","Chest","Half sleeve","Full sleeve","Total"]],body,foot:[["Total","",H,F,shirts.length]],theme:"grid",
+    d.autoTable({startY:36,head:[["Size","Letter","Half sleeve","Full sleeve","Total"]],body,foot:[["Total","",H,F,shirts.length]],theme:"grid",
       headStyles:{fillColor:[47,74,52]},footStyles:{fillColor:[244,231,210],textColor:20,fontStyle:"bold"},columnStyles:{2:{halign:"center"},3:{halign:"center"},4:{halign:"center"}}});
     const dm=women.filter(r=>r.item==="Dress material").length,sa=women.filter(r=>r.item==="Saree").length;
     d.setFont("helvetica","bold");d.setFontSize(12);d.text("Women",14,d.lastAutoTable.finalY+12);
@@ -244,7 +245,7 @@ $("myPdf").addEventListener("click",()=>{
     d.setFont("helvetica","bold");d.setFontSize(15);d.text("EMR Groups - Staff Uniform",12,14);
     d.setTextColor(20,20,20);d.setFont("helvetica","normal");d.setFontSize(10);
     d.text("Submitted: "+new Date(r.at).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"}),12,32);
-    const body=[["Name",r.name],["Place",r.plant],["Gender",r.gender]].concat(r.gender==="Female"?[["Item",r.item]]:[["Shirt size",r.size+" ("+(SIZES.find(x=>x[0]===r.size)||["",""])[1].replace("–","-")+'" chest)'],["Sleeve",r.sleeve+" sleeve"]]);
+    const body=[["Name",r.name],["Place",r.plant],["Gender",r.gender]].concat(r.gender==="Female"?[["Item",r.item]]:[["Shirt size",r.size+'" ('+((SIZES.find(x=>x[0]===r.size)||["",""])[1])+")"],["Sleeve",r.sleeve+" sleeve"]]);
     d.autoTable({startY:38,body,theme:"grid",styles:{fontSize:12,cellPadding:4},columnStyles:{0:{fontStyle:"bold",cellWidth:38,fillColor:[244,231,210]}},margin:{left:12,right:12}});
     d.setFontSize(9);d.setTextColor(110,110,110);d.text("To change your details, open the survey link again and submit with the same name.",12,d.lastAutoTable.finalY+10);
     d.save("Uniform_"+r.name.replace(/[^A-Za-z0-9]+/g,"_")+".pdf");
