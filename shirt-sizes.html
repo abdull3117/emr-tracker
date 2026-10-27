@@ -67,6 +67,9 @@ li:first-child{border-top:0}
 .del{font:inherit;font-size:.8rem;background:none;border:0;color:var(--danger);cursor:pointer;padding:4px}
 .empty{color:var(--faint);font-size:.92rem;padding:8px 0}
 .wa{display:block;text-align:center;text-decoration:none}
+.admin{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:.85rem;color:var(--faint)}
+.admin input{width:auto;flex:1 1 160px;max-width:220px;padding:7px 10px;font-size:.9rem}
+.linkbtn{font:inherit;background:none;border:0;color:var(--soft);text-decoration:underline;cursor:pointer;padding:4px}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
@@ -128,6 +131,10 @@ li:first-child{border-top:0}
     </div>
     <ul id="list"><li class="empty">No names yet. The first person to submit will appear here.</li></ul>
   </section>
+  <div class="admin" id="adminBar"><button class="linkbtn" id="adminOpen" type="button">Admin</button>
+    <span id="adminForm" hidden><input id="adminPin" type="password" placeholder="Admin password" autocomplete="off"> <button class="btn ghost" id="adminGo" type="button">Unlock</button></span>
+    <span id="adminOn" hidden>Admin mode: tap Remove next to a name. <button class="linkbtn" id="adminOff" type="button">Lock</button></span>
+  </div>
 </div>
 
 <script>
@@ -156,7 +163,7 @@ function render(){
   const fs=$("fSize").value, fv=$("fSleeve").value;
   const list=rows.filter(r=>(!fp.value||r.plant===fp.value)&&(!fs||r.size===fs)&&(!fv||r.sleeve===fv))
     .sort((a,b)=>String(a.name).localeCompare(String(b.name)));
-  $("list").innerHTML=list.length?list.map(r=>`<li><div class="nm"><b>${esc(r.name)}${r.id===myId?" (you)":""}</b><small>${esc(r.plant)}</small></div><span class="pill">${esc(r.size)}${r.sleeve?" · "+esc(r.sleeve):""}</span>${r.id===myId?`<button class="del" data-edit="${esc(r.id)}">Edit</button>`:""}</li>`).join("")
+  $("list").innerHTML=list.length?list.map(r=>`<li><div class="nm"><b>${esc(r.name)}${r.id===myId?" (you)":""}</b><small>${esc(r.plant)}</small></div><span class="pill">${esc(r.size)}${r.sleeve?" · "+esc(r.sleeve):""}</span>${r.id===myId||admin?`<button class="del" data-edit="${esc(r.id)}">Edit</button>`:""}${admin?`<button class="del" data-del="${esc(r.id)}">Remove</button>`:""}</li>`).join("")
     :`<li class="empty">${rows.length?"No names match this filter.":"No names yet. The first person to submit will appear here."}</li>`;
 }
 $("fPlant").addEventListener("change",render);$("fSize").addEventListener("change",render);$("fSleeve").addEventListener("change",render);
@@ -164,7 +171,22 @@ $("fPlant").addEventListener("change",render);$("fSize").addEventListener("chang
 
 const COL="tracker_syncMeta", KIND="shirtSize";
 const slug=n=>"shirt-"+n.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60);
-$("list").addEventListener("click",e=>{
+const ADMIN_HASH="b97c6bd1d212e55a03b591b68470794bb96fdf7700b01ce7ce95d59a5390b22d";
+async function sha(t){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");}
+function setAdmin(on){admin=on;$("adminOpen").hidden=on;$("adminForm").hidden=true;$("adminOn").hidden=!on;try{on?sessionStorage.setItem("emrShirtAdmin","1"):sessionStorage.removeItem("emrShirtAdmin");}catch(_){}render();}
+$("adminOpen").addEventListener("click",()=>{$("adminForm").hidden=false;$("adminOpen").hidden=true;$("adminPin").focus();});
+async function unlock(){if(await sha($("adminPin").value)===ADMIN_HASH){$("adminPin").value="";setAdmin(true);}else{$("adminPin").value="";$("adminPin").placeholder="Wrong password, try again";}}
+$("adminGo").addEventListener("click",unlock);$("adminPin").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();unlock();}});
+$("adminOff").addEventListener("click",()=>setAdmin(false));
+try{if(sessionStorage.getItem("emrShirtAdmin")==="1")setTimeout(()=>setAdmin(true));}catch(_){}
+let pendingDel=null;
+$("list").addEventListener("click",async e=>{
+  const dl=e.target.dataset.del;
+  if(dl&&admin){
+    if(pendingDel!==dl){pendingDel=dl;e.target.textContent="Tap again to remove";setTimeout(()=>{if(pendingDel===dl){pendingDel=null;render();}},3000);return;}
+    pendingDel=null;try{await db.collection(COL).doc(dl).delete();say("Entry removed.","ok");}catch(err){say("Could not remove that entry. Please try again.","err");}
+    return;
+  }
   const ed=e.target.dataset.edit;if(!ed)return;const r=rows.find(x=>x.id===ed);if(!r)return;
   $("name").value=r.name;$("plant").value=r.plant;size=r.size;sleeve=r.sleeve||"";paintSizes();updateWa();
   say("Change the size or sleeve and tap Save.","");window.scrollTo({top:0,behavior:"smooth"});
