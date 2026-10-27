@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>EMR Shirt Sizes</title>
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>body{margin:0}[hidden]{display:none!important}
+/* Layout: one narrow column — form card on top, live size tally, then the name list */
+:root{
+  --bg:#EEF1E6; --card:#FFFDF7; --fg:#1C2620; --soft:#54634F; --faint:#8B9784;
+  --line:#D7DCC4; --brand:#2F4A34; --brand-ink:#F3F6EC; --accent:#95610E; --accent-ink:#FFFBF2;
+  --wash:#F4E7D2; --ok:#2E7D4F; --danger:#9A3324;
+  --display:"Zilla Slab",Georgia,serif; --body:"IBM Plex Sans",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12160F; --card:#1B2118; --fg:#E9EEE0; --soft:#AAB49E; --faint:#6E7A66;
+  --line:#333D2B; --brand:#3E6249; --brand-ink:#F3F6EC; --accent:#D6A34E; --accent-ink:#241804;
+  --wash:#2C2410; --ok:#6FC08F; --danger:#E08668; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12160F; --card:#1B2118; --fg:#E9EEE0; --soft:#AAB49E; --faint:#6E7A66;
+  --line:#333D2B; --brand:#3E6249; --brand-ink:#F3F6EC; --accent:#D6A34E; --accent-ink:#241804;
+  --wash:#2C2410; --ok:#6FC08F; --danger:#E08668; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 60px}
+.wrap{max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1,h2{font-family:var(--display);margin:0;text-wrap:balance}
+.head{background:var(--brand);color:var(--brand-ink);border-radius:14px;padding:20px 22px}
+.head h1{font-size:1.6rem;color:var(--brand-ink)}
+.head p{margin:4px 0 0;font-size:.92rem;opacity:.85}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+.card h2{font-size:1.15rem;margin-bottom:12px}
+label{display:block;font-size:.82rem;font-weight:600;color:var(--soft);margin-bottom:6px}
+input,select{font:inherit;font-size:1rem;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px;width:100%}
+.field{margin-bottom:16px}
+.sizes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.sleeves{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sleeves .size b{font-size:1rem}
+.size{font:inherit;border:1.5px solid var(--line);background:var(--bg);color:var(--fg);border-radius:10px;padding:10px 4px;cursor:pointer;text-align:center}
+.size b{display:block;font-size:1.1rem}
+.size small{color:var(--faint);font-size:.72rem}
+.size[aria-pressed="true"]{border-color:var(--accent);background:var(--wash)}
+.size[aria-pressed="true"] small{color:var(--soft)}
+.btn{font:inherit;font-weight:600;border:0;border-radius:10px;padding:12px 18px;cursor:pointer;background:var(--accent);color:var(--accent-ink);width:100%}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);width:auto;padding:8px 12px;font-size:.85rem}
+.btn:disabled{opacity:.5;cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.msg{font-size:.88rem;margin-top:10px;min-height:1.3em}
+.msg.ok{color:var(--ok)} .msg.err{color:var(--danger)}
+.hint{font-size:.8rem;color:var(--faint);margin-top:8px}
+.tally{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;text-align:center}
+.tally div{background:var(--bg);border-radius:9px;padding:8px 2px}
+.tally b{display:block;font-family:var(--display);font-size:1.4rem;font-variant-numeric:tabular-nums}
+.tally span{font-size:.75rem;color:var(--soft)}
+.tally em{display:block;font-style:normal;font-size:.7rem;color:var(--faint);font-variant-numeric:tabular-nums}
+.total{font-size:.88rem;color:var(--soft);margin:10px 0 0}
+@media (max-width:420px){.tally{grid-template-columns:repeat(3,1fr)}}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.filters select{width:auto;padding:6px 10px;font-size:.88rem}
+ul{list-style:none;margin:0;padding:0}
+li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+li:first-child{border-top:0}
+.nm{flex:1;min-width:0}
+.nm b{display:block;overflow-wrap:anywhere}
+.nm small{color:var(--faint)}
+.pill{font-weight:600;background:var(--wash);color:var(--fg);border-radius:999px;padding:3px 12px;font-variant-numeric:tabular-nums}
+.del{font:inherit;font-size:.8rem;background:none;border:0;color:var(--danger);cursor:pointer;padding:4px}
+.empty{color:var(--faint);font-size:.92rem;padding:8px 0}
+.wa{display:block;text-align:center;text-decoration:none}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
+</head><body>
+
+<div class="wrap">
+  <div class="head">
+    <h1>EMR Groups · Shirt Sizes</h1>
+    <p>Type your name, choose your shirt size and half or full sleeve. To change your answer, submit again with the same name.</p>
+  </div>
+
+  <form class="card" id="form" novalidate>
+    <h2 id="formTitle">Your size</h2>
+    <div class="field">
+      <label for="name">Your name</label>
+      <input id="name" autocomplete="name" placeholder="e.g. Murugan K" maxlength="60">
+    </div>
+    <div class="field">
+      <label for="plant">Where do you work?</label>
+      <select id="plant">
+        <option>Orathur</option>
+        <option>Vikravandi</option>
+        <option>Office</option>
+        <option>Sales / Field</option>
+      </select>
+    </div>
+    <div class="field">
+      <label id="sizeLabel">Shirt size (chest, inches)</label>
+      <div class="sizes" id="sizes" role="group" aria-labelledby="sizeLabel"></div>
+      <p class="hint">Not sure? Measure around your chest, or check the size tag on a shirt that fits you well.</p>
+    </div>
+    <div class="field">
+      <label id="sleeveLabel">Sleeve <span style="color:var(--danger)">*</span></label>
+      <div class="sleeves" id="sleeves" role="group" aria-labelledby="sleeveLabel">
+        <button type="button" class="size" data-v="Half" aria-pressed="false"><b>Half sleeve</b></button>
+        <button type="button" class="size" data-v="Full" aria-pressed="false"><b>Full sleeve</b></button>
+      </div>
+    </div>
+    <button class="btn" id="save" type="submit">Submit my size</button>
+    <p class="msg" id="msg" role="status"></p>
+    <div id="waBox" hidden>
+      <p class="hint">Problem saving? Send your size on WhatsApp instead:</p>
+      <a class="btn wa" id="wa" href="#" target="_blank" rel="noopener">Send on WhatsApp</a>
+    </div>
+  </form>
+
+  <section class="card">
+    <h2>Order count</h2>
+    <div class="tally" id="tally"></div>
+    <p class="total" id="total">Loading entries…</p>
+  </section>
+
+  <section class="card">
+    <h2>Names submitted</h2>
+    <div class="filters">
+      <select id="fPlant" aria-label="Filter by place"><option value="">All places</option></select>
+      <select id="fSize" aria-label="Filter by size"><option value="">All sizes</option></select>
+      <select id="fSleeve" aria-label="Filter by sleeve"><option value="">Half and full</option><option value="Half">Half sleeve</option><option value="Full">Full sleeve</option></select>
+    </div>
+    <ul id="list"><li class="empty">No names yet. The first person to submit will appear here.</li></ul>
+  </section>
+</div>
+
+<script>
+const SIZES=[["S","36–38"],["M","38–40"],["L","40–42"],["XL","42–44"],["XXL","44–46"],["3XL","46–48"]];
+const WA_NUMBER="919952439559";
+const $=id=>document.getElementById(id);
+let size="", sleeve="", rows=[], db=null, myId=null, admin=false, editingId=null;
+
+$("sizes").innerHTML=SIZES.map(([s,c])=>`<button type="button" class="size" data-s="${s}" aria-pressed="false"><b>${s}</b><small>${c}"</small></button>`).join("");
+$("fSize").innerHTML+=SIZES.map(([s])=>`<option>${s}</option>`).join("");
+$("sizes").addEventListener("click",e=>{const b=e.target.closest(".size");if(!b)return;size=b.dataset.s;paintSizes();updateWa();});
+$("sleeves").addEventListener("click",e=>{const b=e.target.closest(".size");if(!b)return;sleeve=b.dataset.v;paintSizes();updateWa();});
+function paintSizes(){document.querySelectorAll("#sleeves .size").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===sleeve));document.querySelectorAll("#sizes .size").forEach(b=>b.setAttribute("aria-pressed",b.dataset.s===size));}
+function updateWa(){const t=`Shirt size\nName: ${$("name").value.trim()||"-"}\nPlace: ${$("plant").value}\nSize: ${size||"-"}\nSleeve: ${sleeve?sleeve+" sleeve":"-"}`;$("wa").href=`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(t)}`;}
+["name","plant"].forEach(i=>$(i).addEventListener("input",updateWa));updateWa();
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function say(t,k){$("msg").textContent=t;$("msg").className="msg "+(k||"");}
+
+function render(){
+  const count={};SIZES.forEach(([s])=>count[s]={t:0,Half:0,Full:0});let H=0,F=0;rows.forEach(r=>{const c=count[r.size];if(c){c.t++;if(r.sleeve==="Half"){c.Half++;H++;}else if(r.sleeve==="Full"){c.Full++;F++;}}});
+  $("tally").innerHTML=SIZES.map(([s])=>`<div><b>${count[s].t}</b><span>${s}</span><em>H ${count[s].Half} · F ${count[s].Full}</em></div>`).join("");
+  $("total").textContent=rows.length?`${rows.length} shirt${rows.length>1?"s":""} in total · ${H} half sleeve · ${F} full sleeve`:"No entries yet.";
+  const plants=[...new Set(rows.map(r=>r.plant).filter(Boolean))].sort();
+  const fp=$("fPlant"),cur=fp.value;
+  fp.innerHTML=`<option value="">All places</option>`+plants.map(p=>`<option${p===cur?" selected":""}>${esc(p)}</option>`).join("");
+  const fs=$("fSize").value, fv=$("fSleeve").value;
+  const list=rows.filter(r=>(!fp.value||r.plant===fp.value)&&(!fs||r.size===fs)&&(!fv||r.sleeve===fv))
+    .sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  $("list").innerHTML=list.length?list.map(r=>`<li><div class="nm"><b>${esc(r.name)}${r.id===myId?" (you)":""}</b><small>${esc(r.plant)}</small></div><span class="pill">${esc(r.size)}${r.sleeve?" · "+esc(r.sleeve):""}</span>${r.id===myId?`<button class="del" data-edit="${esc(r.id)}">Edit</button>`:""}</li>`).join("")
+    :`<li class="empty">${rows.length?"No names match this filter.":"No names yet. The first person to submit will appear here."}</li>`;
+}
+$("fPlant").addEventListener("change",render);$("fSize").addEventListener("change",render);$("fSleeve").addEventListener("change",render);
+
+
+const COL="tracker_syncMeta", KIND="shirtSize";
+const slug=n=>"shirt-"+n.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60);
+$("list").addEventListener("click",e=>{
+  const ed=e.target.dataset.edit;if(!ed)return;const r=rows.find(x=>x.id===ed);if(!r)return;
+  $("name").value=r.name;$("plant").value=r.plant;size=r.size;sleeve=r.sleeve||"";paintSizes();updateWa();
+  say("Change the size or sleeve and tap Save.","");window.scrollTo({top:0,behavior:"smooth"});
+});
+$("form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const name=$("name").value.trim().replace(/\s+/g," ");
+  if(!name){say("Please type your name.","err");$("name").focus();return;}
+  if(!size){say("Please choose a size.","err");return;}
+  if(!sleeve){say("Please choose half sleeve or full sleeve.","err");return;}
+  if(!db){say("Saving isn't available right now. Use the WhatsApp button below.","err");$("waBox").hidden=false;return;}
+  $("save").disabled=true;
+  try{
+    await db.collection(COL).doc(slug(name)).set({kind:KIND,name,plant:$("plant").value,size,sleeve,at:new Date().toISOString()});
+    say(`Saved: ${name} · ${size} · ${sleeve} sleeve. Thank you!`,"ok");
+    try{localStorage.setItem("emrShirtName",name);}catch(_){}
+  }catch(err){say("Could not save. Check your internet and try again, or use WhatsApp below.","err");$("waBox").hidden=false;}
+  $("save").disabled=false;
+});
+try{
+  firebase.initializeApp({apiKey:"AIzaSyB6LP8PM9EaMYq8wMTJRUUZ7_wp-skTMGE",authDomain:"batch-book-emr.firebaseapp.com",projectId:"batch-book-emr"});
+  db=firebase.firestore();
+  db.collection(COL).where("kind","==",KIND).onSnapshot(snap=>{
+    rows=snap.docs.map(x=>({id:x.id,...x.data()}));
+    let mine=null;try{const n=localStorage.getItem("emrShirtName");if(n)myId=slug(n);}catch(_){}
+    render();
+  },()=>{$("total").textContent="The list couldn't load. Please reopen the page.";$("waBox").hidden=false;});
+}catch(_){$("total").textContent="The list couldn't load.";$("waBox").hidden=false;}
+render();
+</script></body></html>
