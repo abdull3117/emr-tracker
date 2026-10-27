@@ -1,0 +1,16 @@
+{
+  "id": "./launcher.html",
+  "name": "EMR Apps",
+  "short_name": "EMR Apps",
+  "description": "One place to open EMR Tracker, Batch Book and the staff uniform survey",
+  "start_url": "./launcher.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#EEF1E6",
+  "theme_color": "#1f6d4c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
