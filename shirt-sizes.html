@@ -131,7 +131,7 @@ li:first-child{border-top:0}
     </div>
     <ul id="list"><li class="empty">No names yet. The first person to submit will appear here.</li></ul>
   </section>
-  <div class="admin" id="adminBar"><button class="linkbtn" id="adminOpen" type="button">Admin</button>
+  <div class="admin" id="adminBar"><button class="btn ghost" id="adminOpen" type="button">Admin login</button>
     <span id="adminForm" hidden><input id="adminPin" type="password" placeholder="Admin password" autocomplete="off"> <button class="btn ghost" id="adminGo" type="button">Unlock</button></span>
     <span id="adminOn" hidden>Admin mode: tap Remove next to a name. <button class="linkbtn" id="adminOff" type="button">Lock</button></span>
   </div>
@@ -179,6 +179,8 @@ async function unlock(){if(await sha($("adminPin").value)===ADMIN_HASH){$("admin
 $("adminGo").addEventListener("click",unlock);$("adminPin").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();unlock();}});
 $("adminOff").addEventListener("click",()=>setAdmin(false));
 try{if(sessionStorage.getItem("emrShirtAdmin")==="1")setTimeout(()=>setAdmin(true));}catch(_){}
+function adminHash(){if(location.hash==="#admin"&&!admin){$("adminForm").hidden=false;$("adminOpen").hidden=true;$("adminBar").scrollIntoView({behavior:"smooth"});$("adminPin").focus();}}
+window.addEventListener("hashchange",adminHash);setTimeout(adminHash,300);
 let pendingDel=null;
 $("list").addEventListener("click",async e=>{
   const dl=e.target.dataset.del;
