@@ -73,6 +73,8 @@ li:first-child{border-top:0}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head><body>
 
 <div class="wrap">
@@ -120,6 +122,7 @@ li:first-child{border-top:0}
     <h2>Order count</h2>
     <div class="tally" id="tally"></div>
     <p class="total" id="total">Loading entries…</p>
+    <button class="btn" id="pdfBtn" type="button" style="margin-top:12px" hidden>Download PDF report</button>
   </section>
 
   <section class="card">
@@ -173,10 +176,27 @@ const COL="tracker_syncMeta", KIND="shirtSize";
 const slug=n=>"shirt-"+n.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60);
 const ADMIN_HASH="b97c6bd1d212e55a03b591b68470794bb96fdf7700b01ce7ce95d59a5390b22d";
 async function sha(t){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");}
-function setAdmin(on){admin=on;$("adminOpen").hidden=on;$("adminForm").hidden=true;$("adminOn").hidden=!on;try{on?sessionStorage.setItem("emrShirtAdmin","1"):sessionStorage.removeItem("emrShirtAdmin");}catch(_){}render();}
+function setAdmin(on){admin=on;$("pdfBtn").hidden=!on;$("adminOpen").hidden=on;$("adminForm").hidden=true;$("adminOn").hidden=!on;try{on?sessionStorage.setItem("emrShirtAdmin","1"):sessionStorage.removeItem("emrShirtAdmin");}catch(_){}render();}
 $("adminOpen").addEventListener("click",()=>{$("adminForm").hidden=false;$("adminOpen").hidden=true;$("adminPin").focus();});
 async function unlock(){if(await sha($("adminPin").value)===ADMIN_HASH){$("adminPin").value="";setAdmin(true);}else{$("adminPin").value="";$("adminPin").placeholder="Wrong password, try again";}}
 $("adminGo").addEventListener("click",unlock);$("adminPin").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();unlock();}});
+$("pdfBtn").addEventListener("click",()=>{
+  try{
+    const {jsPDF}=window.jspdf;const d=new jsPDF({unit:"mm",format:"a4"});
+    const now=new Date().toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
+    d.setFont("helvetica","bold");d.setFontSize(16);d.text("EMR Groups - Shirt Size Order",14,18);
+    d.setFont("helvetica","normal");d.setFontSize(10);d.text("Generated: "+now+"   |   Total shirts: "+rows.length,14,25);
+    const body=SIZES.map(([s,c])=>{const r=rows.filter(x=>x.size===s);const h=r.filter(x=>x.sleeve==="Half").length,f=r.filter(x=>x.sleeve==="Full").length;return [s,c.replace("–","-")+'"',h,f,r.length];});
+    const H=rows.filter(x=>x.sleeve==="Half").length,F=rows.filter(x=>x.sleeve==="Full").length;
+    d.autoTable({startY:30,head:[["Size","Chest","Half sleeve","Full sleeve","Total"]],body,foot:[["Total","",H,F,rows.length]],theme:"grid",
+      headStyles:{fillColor:[47,74,52]},footStyles:{fillColor:[244,231,210],textColor:20,fontStyle:"bold"},columnStyles:{2:{halign:"center"},3:{halign:"center"},4:{halign:"center"}}});
+    const order={};SIZES.forEach(([s],i)=>order[s]=i);
+    const list=[...rows].sort((a,b)=>String(a.plant).localeCompare(String(b.plant))||(order[a.size]-order[b.size])||String(a.name).localeCompare(String(b.name)));
+    d.setFont("helvetica","bold");d.setFontSize(12);d.text("Name list",14,d.lastAutoTable.finalY+12);
+    d.autoTable({startY:d.lastAutoTable.finalY+15,head:[["#","Name","Place","Size","Sleeve"]],body:list.map((r,i)=>[i+1,r.name,r.plant,r.size,r.sleeve||"-"]),theme:"striped",headStyles:{fillColor:[47,74,52]},columnStyles:{0:{cellWidth:10}}});
+    d.save("Shirt_Sizes_"+new Date().toISOString().slice(0,10)+".pdf");
+  }catch(err){say("Could not create the PDF. Please reload the page and try again.","err");}
+});
 $("adminOff").addEventListener("click",()=>setAdmin(false));
 try{if(sessionStorage.getItem("emrShirtAdmin")==="1")setTimeout(()=>setAdmin(true));}catch(_){}
 function adminHash(){if(location.hash==="#admin"&&!admin){$("adminForm").hidden=false;$("adminOpen").hidden=true;$("adminBar").scrollIntoView({behavior:"smooth"});$("adminPin").focus();}}
